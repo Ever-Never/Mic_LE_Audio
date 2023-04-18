@@ -1,0 +1,62 @@
+{
+	"folders": [
+		{
+			"path": "..\\.."
+		},
+		{
+			"name": "mcuboot_smp_ble",
+			"path": "..\\..\\..\\..\\..\\..\\Software\\samples_for_nrf_connect_sdk\\bootloader_samples\\smp\\mcuboot_smp_ble"
+		}
+	],
+	"settings": {
+		"nrf-connect.topdir": "d:\\nRF52_Connect_SDK_V2.2.0\\v2.2.0",
+		"nrf-connect.toolchain.path": "d:\\nRF52_Connect_SDK_V2.2.0\\toolchains\\v2.2.0",
+		"nrf-connect.applications": [
+			"${workspaceFolder:mcuboot_smp_ble}",
+			"${workspaceFolder}"
+		],
+		"files.associations": {
+			"log.h": "c",
+			"i2c.h": "c",
+			"kernel.h": "c",
+			"macros_common.h": "c",
+			"es8311.h": "c",
+			"hw_codec.h": "c",
+			"gpio.h": "c",
+			"led.h": "c",
+			"stdbool.h": "c",
+			"nrfx_saadc.h": "c",
+			"algorithm": "c",
+			"typeinfo": "c",
+			"bluetooth.h": "c",
+			"device.h": "c",
+			"settings.h": "c",
+			"nus.h": "c",
+			"pair_ultilities.h": "c",
+			"ble_custom_nus_central.h": "c",
+			"flash.h": "c",
+			"ctrl_events.h": "c",
+			"nrfx_clock.h": "c",
+			"gatt.h": "c",
+			"array": "c",
+			"string": "c",
+			"string_view": "c"
+		},
+		"nrf-connect.debugging.bindings": {
+			"${workspaceFolder}/build": "Launch build"
+		},
+		"git.ignoreLimitWarning": true
+	},
+	"launch": {
+		"version": "0.2.0",
+		"configurations": [
+			{
+				"type": "nrf-connect",
+				"request": "launch",
+				"name": "Launch build",
+				"config": "${workspaceFolder}/build",
+				"runToEntryPoint": "main"
+			}
+		]
+	}
+}

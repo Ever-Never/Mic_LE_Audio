@@ -1,0 +1,303 @@
+// To get started, press Ctrl+Space to bring up the completion menu and view the available nodes.
+
+// You can also use the buttons in the sidebar to perform actions on nodes.
+// Actions currently available include:
+
+// * Enabling / disabling the node
+// * Adding the bus to a bus
+// * Removing the node
+// * Connecting ADC channels
+
+// For more help, browse the DeviceTree documentation at https://docs.zephyrproject.org/latest/guides/dts/index.html
+// You can also visit the nRF DeviceTree extension documentation at https://nrfconnect.github.io/vscode-nrf-connect/devicetree/nrfdevicetree.html
+/{
+	// leds:	leds {
+	// 	rgb1_blue: led_2 {
+	// 		gpios = <&gpio0 25 GPIO_ACTIVE_HIGH>;
+	// 		label = "0 LED_RGB_BLUE";
+	// 	};
+	// };
+	buttons {
+		compatible = "gpio-keys";
+		button_1_vol_dn: button_1_vol_dn {
+			gpios = <&gpio0 9 (GPIO_ACTIVE_LOW)>;
+			label = "Push down button";
+		};
+		button_2_vol_up: button_2_vol_up {
+			gpios = <&gpio1 2 (GPIO_ACTIVE_LOW)>;
+			label = "Push up button";
+		};
+		button_3_pair: button3_pair {
+			gpios = <&gpio0 3 (GPIO_ACTIVE_LOW)>;
+			label = "Button3: Pair fucntion";
+		};
+		button_4_on_off: button4_on_off {
+			gpios = <&gpio0 24 (GPIO_ACTIVE_LOW|GPIO_PULL_DOWN)>;
+			label = "Button 4: On off function";
+		};
+        // /delete-node/button5;
+        // /delete-node/button4;
+        // /delete-node/button3;
+		// button5: button_5 {
+		// 	gpios = <&gpio0 5 (GPIO_PULL_UP | GPIO_ACTIVE_LOW)>;
+		// 	label = "Push button 5";
+		// }
+	};
+	battery: battery
+	{
+		compatible = "gpio-leds";
+		bat_measure: bat_measure
+		{
+			//compatible = "gpio-leds";
+			gpios = <&gpio0 27 GPIO_ACTIVE_HIGH>;
+			label = "Battery measurement";
+		};
+	};
+    user_leds:	user_leds {
+        compatible = "gpio-leds";
+        led_pwr: led_power{
+            gpios = <&gpio1 13 GPIO_ACTIVE_HIGH>;
+            label = "LED POWER";
+        };
+        led_ble: led_bluetooth{
+            gpios = <&gpio0 29 GPIO_ACTIVE_HIGH>;
+            label = "LED BLE";
+        };
+
+
+    };
+	inout: inout{
+		compatible = "gpio-leds";
+		mic_shutdown: mic_shutdown{
+			gpios = <&gpio0 2 GPIO_ACTIVE_HIGH>;
+			label = "MIC_SHUTDOWN";
+		};
+		on_off_control: on_off_control{
+			gpios = <&gpio0 28 GPIO_ACTIVE_HIGH>;
+			//lable = "ON_OFF";
+			label = "ON_OFF";
+		};
+	};
+     /delete-node/nrf5340_audio_dk;
+    // /delete-node/nrf5340_audio_dk;
+    aliases
+     {
+        /delete-property/led0;
+        led0 = &led_pwr;
+        led1 = &led_ble;
+        sw0 = &button_1_vol_dn;
+		sw1 = &button_2_vol_up;
+		sw2 = &button_3_pair;
+		sw3 = &button_4_on_off;
+	    mic = &mic_shutdown;
+		onoff = &on_off_control;
+     };
+};
+
+
+&pinctrl{
+    i2s_user: i2s0_user
+    {
+		group1 {
+			psels = <NRF_PSEL(I2S_MCK, 0, 13)>;
+			nordic,drive-mode = <NRF_DRIVE_H0H1>;
+		};
+		group2 {
+			psels = <NRF_PSEL(I2S_SCK_M, 0, 16)>,
+				<NRF_PSEL(I2S_LRCK_M, 0, 21)>,
+				<NRF_PSEL(I2S_SDOUT, 1, 4)>,
+				<NRF_PSEL(I2S_SDIN, 0, 19)>;
+		};
+    };
+	i2c1_default: i2c1_default {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 1, 2)>,
+				<NRF_PSEL(TWIM_SCL, 1, 4)>;
+            bias-pull-up;
+			
+		};
+	};
+    
+	i2c1_sleep: i2c1_sleep {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 1, 6)>,
+				<NRF_PSEL(TWIM_SCL, 1, 8)>;
+			low-power-enable;
+		};
+	};
+    i2c0_default: i2c0_default {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 1, 8)>,
+				<NRF_PSEL(TWIM_SCL, 1, 4)>;
+            bias-pull-up;
+			
+		};
+	};
+    i2c3_default: i2c3_default {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 1, 8)>,
+				<NRF_PSEL(TWIM_SCL, 1, 6)>;
+            bias-pull-up;
+			
+		};
+	};
+    i2c3_sleep: i2c3_sleep {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 1, 8)>,
+				<NRF_PSEL(TWIM_SCL, 1, 6)>;
+            //bias-pull-up;
+            low-power-enable;
+		};
+	};
+    i2c4_default: i2c4_default {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 1, 8)>,
+				<NRF_PSEL(TWIM_SCL, 1, 9)>;
+            bias-pull-up;
+			
+		};
+	};
+    
+	i2c1_sleep: i2c1_sleep {
+		group1 {
+			psels = <NRF_PSEL(TWIM_SDA, 1, 6)>,
+				<NRF_PSEL(TWIM_SCL, 1, 8)>;
+			low-power-enable;
+		};
+	};
+
+};
+
+// &i2s0 {
+// 	compatible = "nordic,nrf-i2s";
+// 	status = "okay";
+// 	pinctrl-0 = <&i2s_user>;
+// 	pinctrl-names = "user_i2s";
+// };
+
+// &i2s0 {
+// 	compatible = "nordic,nrf-i2s";
+// 	status = "okay";
+// 	//pinctrl-0 = <&i2s_user>;
+// 	pinctrl-names = "default";
+// };
+// &i2c1 {
+// 	compatible = "nordic,nrf-twim";
+// 	status = "okay";
+// 	pinctrl-0 = <&i2c_user>;
+// 	//pinctrl-1 = <&i2c1_sleep>;
+// 	pinctrl-names = "default", "sleep";
+// };
+
+&i2s0 {
+	compatible = "nordic,nrf-i2s";
+	status = "okay";
+    pinctrl-0 = <&i2s_user>;
+    pinctrl-names = "default";
+};
+&i2c3 {
+    compatible = "nordic,nrf-twim";
+    status = "okay";
+    pinctrl-0 = <&i2c3_default>;
+    pinctrl-1 =  <&i2c3_sleep>;
+    pinctrl-names = "default","sleep";
+};
+&i2c1 {
+    status = "disabled";
+};
+// &i2c1 {
+//     compatible = "nordic,nrf-twim";
+// 	status = "okay";
+// 	pinctrl-0 = <&i2c_user>;
+// 	pinctrl-names = "user_i2c";
+// };
+
+&uart0 {
+    status = "disabled";
+	current-speed = <115200>;
+	pinctrl-0 = <&uart0_default>;
+    /delete-property/ pinctrl-1;
+    /delete-property/ pinctrl-0;
+    /delete-property/pinctrl-names;
+    //pinctrl-names = "default";
+};
+
+// &spi4{
+//     //status = "oka";
+//     /delete-property/ pinctrl-1;
+//     /delete-property/ pinctrl-0;
+//     /delete-property/pinctrl-names;
+//     status = "disabled";
+// 	sdhc0: sdhc@0 {
+// 		compatible = "zephyr,sdhc-spi-slot";
+// 		reg = <0>;
+// 		status = "disabled";
+// 		mmc {
+// 			compatible = "zephyr,sdmmc-disk";
+// 			status = "disabled";
+// 		};
+
+// 		spi-max-frequency = <8000000>;
+//     };
+// };
+// &i2c1 {
+// 	compatible = "nordic,nrf-twim";
+// 	status = "okay";
+// 	pinctrl-0 = <&i2c_user>;
+//     clock-frequency = < I2C_BITRATE_STANDARD >;
+// 	/delete-property/ pinctrl-1;
+// 	pinctrl-names = "default";
+//     es8311:es8311@19
+//     {
+//         compatible = "i2c-device";
+//         reg = <0x19>;
+//     };
+// };
+
+
+&pwm0 {
+	status = "disabled";
+};
+
+&timer0 {
+	status = "disabled";
+};
+
+&timer1 {
+	status = "disabled";
+};
+
+&timer2 {
+	status = "okay";
+};
+// zephyr_udc0: &usbd {
+// 	//compatible = "nordic,nrf-usbd";
+// 	status = "";
+
+// 	hs_0: hs_0 {
+// 		compatible = "usb-audio-hs";
+// 		mic-feature-mute;
+// 		mic-channel-l;
+// 		mic-channel-r;
+
+// 		hp-feature-mute;
+// 		hp-channel-l;
+// 		hp-channel-r;
+// 	};
+// };
+
+// /{
+// //     /delete-node/gpio_fwd;
+// // gpio_fwd: nrf-gpio-forwarder {
+// //     //compatible = "nordic,nrf-gpio-forwarder";
+// //     status = "disabled";
+// //     /delete-node/uart;
+// //     /delete-node/leds;
+// //     uart {
+// //         gpios = <&gpio1 9 0>, <&gpio1 8 0>, <&gpio1 11 0>, <&gpio1 10 0>;
+// //     };
+// //     leds {
+// //         gpios = <&gpio0 28 0>, <&gpio0 29 0>, <&gpio0 30 0>;
+// //     };
+// };
+// };
