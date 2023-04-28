@@ -158,10 +158,10 @@ static struct k_timer *buttons_timer[4] = {
 
 static void button_scan(uint8_t button_idx)
 {
-	struct device *p_gpio = gpio_53_dev;
+	struct device *p_gpio = (struct device*)gpio_53_dev;
 	if(button_idx == 1)
 	{
-		p_gpio = gpio_54_dev;
+		p_gpio = (struct device*)gpio_54_dev;
 	}
 	btn_cfg[button_idx].current_status = gpio_pin_get(p_gpio, btn_cfg[button_idx].btn_pin);
 	if(btn_cfg[button_idx].button_active == BUTTON_ACTIVE_HIGH) // revert logic if active high
@@ -284,7 +284,7 @@ static int pin_msk_to_pin(uint32_t pin_msk, uint32_t *pin_out)
 static void button_isr(const struct device *port, struct gpio_callback *cb, uint32_t pin_msk)
 {
 	int ret;
-	struct event_t event;
+	//struct event_t event;
 	if (debounce_is_ongoing) {
 		LOG_WRN("Btn debounce in action");
 		return;

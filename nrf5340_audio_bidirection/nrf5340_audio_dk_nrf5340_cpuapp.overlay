@@ -167,28 +167,6 @@
 	};
 
 };
-
-// &i2s0 {
-// 	compatible = "nordic,nrf-i2s";
-// 	status = "okay";
-// 	pinctrl-0 = <&i2s_user>;
-// 	pinctrl-names = "user_i2s";
-// };
-
-// &i2s0 {
-// 	compatible = "nordic,nrf-i2s";
-// 	status = "okay";
-// 	//pinctrl-0 = <&i2s_user>;
-// 	pinctrl-names = "default";
-// };
-// &i2c1 {
-// 	compatible = "nordic,nrf-twim";
-// 	status = "okay";
-// 	pinctrl-0 = <&i2c_user>;
-// 	//pinctrl-1 = <&i2c1_sleep>;
-// 	pinctrl-names = "default", "sleep";
-// };
-
 &i2s0 {
 	compatible = "nordic,nrf-i2s";
 	status = "okay";
@@ -205,12 +183,6 @@
 &i2c1 {
     status = "disabled";
 };
-// &i2c1 {
-//     compatible = "nordic,nrf-twim";
-// 	status = "okay";
-// 	pinctrl-0 = <&i2c_user>;
-// 	pinctrl-names = "user_i2c";
-// };
 
 &uart0 {
     status = "disabled";

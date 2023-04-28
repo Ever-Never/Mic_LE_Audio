@@ -2,17 +2,12 @@
 	"folders": [
 		{
 			"path": "..\\.."
-		},
-		{
-			"name": "mcuboot_smp_ble",
-			"path": "..\\..\\..\\..\\..\\..\\Software\\samples_for_nrf_connect_sdk\\bootloader_samples\\smp\\mcuboot_smp_ble"
 		}
 	],
 	"settings": {
 		"nrf-connect.topdir": "d:\\nRF52_Connect_SDK_V2.2.0\\v2.2.0",
 		"nrf-connect.toolchain.path": "d:\\nRF52_Connect_SDK_V2.2.0\\toolchains\\v2.2.0",
 		"nrf-connect.applications": [
-			"${workspaceFolder:mcuboot_smp_ble}",
 			"${workspaceFolder}"
 		],
 		"files.associations": {
@@ -40,7 +35,8 @@
 			"gatt.h": "c",
 			"array": "c",
 			"string": "c",
-			"string_view": "c"
+			"string_view": "c",
+			"es8388.h": "c"
 		},
 		"nrf-connect.debugging.bindings": {
 			"${workspaceFolder}/build": "Launch build"

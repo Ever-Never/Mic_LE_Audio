@@ -64,7 +64,7 @@ struct led_unit_cfg {
 static uint8_t leds_num;
 static bool initialized;
 static struct led_unit_cfg led_units[LED_UNIT_MAX];
-
+static bool m_last_time_stop_stream = false;
 /**
  * @brief Configures fields for a RGB LED
  */
@@ -108,20 +108,11 @@ static int led_device_tree_parse(void)
 	/*Config all leds as monochrome:D*/
 	int ret;
 	for (uint8_t i = 0; i < leds_num; i++) {
-		char *end_ptr = NULL;
-		//uint32_t led_unit = strtoul(led_labels[i], &end_ptr, BASE_10);
-		// if (led_labels[i] == end_ptr) {
-		// 	LOG_ERR("No match for led unit. The dts is likely not properly formatted");
-		// 	return -ENXIO;
-		// }
 		ret = config_led_monochrome(i, i);
 		LOG_INF("Config led: %s", led_labels[i]);
 		if (ret) {			
 			return ret;
 		}
-		// else{
-
-		// }
 	}
 	return 0;
 }
@@ -260,6 +251,7 @@ int led_on(uint8_t led_unit, uint32_t turn_on_time, ...)
 	else
 	{
 		LOG_ERR("Failed to set LED\r\n");
+		return -1;
 	}
 }
 
@@ -271,6 +263,7 @@ int led_blink(uint8_t led_unit, uint8_t on_off_duration, uint32_t blink_times)
 	else
 	{
 		LOG_ERR("Failed to set led blink\r\n");
+		return -1;
 	}
 }
 
@@ -326,21 +319,33 @@ void app_led_indicator_in_pair()
 void app_led_indicator_pair_success()
 {
 	led_blink(LED_POWER, 4, 10);
+	m_last_time_stop_stream = false;
 }
 void app_led_indicator_pair_timeout()
 {
 	led_off(LED_POWER);
+	m_last_time_stop_stream = false;
+
 }
+/**/
+
 /*Both led blink normal -> streaming*/
 void app_led_indicator_streaming()
 {
 	led_blink(LED_BLE, 4 , LED_BLINK_FOREVER);
+	//m_last_time_stop_stream = true;
+	if(m_last_time_stop_stream == true)
+	{
+		led_off(LED_POWER);
+		m_last_time_stop_stream = false;
+	}
 	//led_off(LED_POWER);
 }
 void app_led_indicator_stop_streaming()
 {
-	led_on(LED_POWER, LED_ON_FOREVER);
+	led_on(LED_POWER, LED_ON_FOREVER);	
 	led_off(LED_BLE);
+	m_last_time_stop_stream = true;
 }
 /*Indicate device is powered*/
 void app_led_turn_on_device()

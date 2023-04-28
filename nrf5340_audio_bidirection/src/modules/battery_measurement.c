@@ -19,7 +19,7 @@
 LOG_MODULE_REGISTER(battery_measurement, 5);
 
 static const struct device *adc_battery;
-static const struct gpio_dt_spec battery_pin = GPIO_DT_SPEC_GET(DT_NODELABEL(bat_measure), gpios);
+//static const struct gpio_dt_spec battery_pin = GPIO_DT_SPEC_GET(DT_NODELABEL(bat_measure), gpios);
 
 #define ADC_1ST_CHANNEL_ID 0
 #define ADC_RESOLUTION_BITS 12

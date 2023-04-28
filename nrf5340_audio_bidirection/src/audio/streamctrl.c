@@ -265,34 +265,16 @@ static void button_evt_handler(struct button_evt event)
 	}
 
 	case BUTTON_VOLUME_UP:
-		// ret = le_audio_volume_up();
-		// if (ret) {
-		// 	LOG_WRN("Failed to increase volume: %d\r\n", ret);
-		// 	break;
-		// }
 		hw_codec_volume_increase();
 		uint16_t data;
-		battery_raw_data_get(&battery_raw_data_get);
+		battery_raw_data_get(&data);
 		break;
 
 	case BUTTON_VOLUME_DOWN:
-		// ret = le_audio_volume_down();
-		// if (ret) {
-		// 	LOG_WRN("Failed to decrease volume: %d\r\n", ret);
-		// 	break;
-		// }
 		hw_codec_volume_decrease();
 		break;
 	case BUTTON_ON_OFF:
 		hw_output_button_handle();
-		//hw_output_set_level(GPIO_ON_OFF_CTRL, false);
-		// if (IS_ENABLED(CONFIG_WALKIE_TALKIE_DEMO)) {
-		// 	LOG_DBG("Play/pause not supported in walkie-talkie mode");
-		// 	return;
-		// }
-		// /* Starts/pauses the audio stream */
-		// le_audio_play_pause();
-
 		break;
 
 	default:

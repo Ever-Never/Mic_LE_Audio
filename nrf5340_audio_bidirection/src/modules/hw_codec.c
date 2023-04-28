@@ -20,6 +20,7 @@
 #include "cs47l63_reg_conf.h"
 #include "cs47l63_comm.h"
 #include "es8311.h"
+#include "es8388.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(hw_codec, CONFIG_MODULE_HW_CODEC_LOG_LEVEL);
@@ -86,7 +87,64 @@ static inline float codec_get_dac_volume_offset(int volume)
 #define MIC_SHUTDOWN_NODE	DT_ALIAS(mic)
 static const struct gpio_dt_spec mic_shutdown = GPIO_DT_SPEC_GET(MIC_SHUTDOWN_NODE, gpios);
 
-
+static const int es8311_mic_gain[] =
+{
+    ES8311_MIC_GAIN_0DB,
+    ES8311_MIC_GAIN_6DB,
+    ES8311_MIC_GAIN_12DB,
+    ES8311_MIC_GAIN_18DB,
+    ES8311_MIC_GAIN_24DB,
+    ES8311_MIC_GAIN_30DB,
+    ES8311_MIC_GAIN_36DB,
+    ES8311_MIC_GAIN_42DB,
+};
+static const int es8388_mic_gain[] = 
+{
+    MIC_GAIN_0DB,
+    MIC_GAIN_3DB,
+    MIC_GAIN_6DB,
+    MIC_GAIN_9DB,
+    MIC_GAIN_12DB,
+    MIC_GAIN_15DB,
+    MIC_GAIN_18DB,
+    MIC_GAIN_21DB,
+    MIC_GAIN_24DB
+};
+#define ES8311_MIC_GAIN_SIZE		(sizeof(es8311_mic_gain)/sizeof(es8311_mic_gain[0]))
+#define ES8388_MIC_GAIN_SIZE		(sizeof(es8388_mic_gain)/sizeof(es8388_mic_gain[0]))
+static int get_codec_mic_volume(uint8_t volume_percent)
+{
+	int ret_mic_gain = 0;
+	volume_percent = volume_percent / 10;
+#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
+	if(volume_percent >= ES8311_MIC_GAIN_SIZE - 1)
+	{
+		ret_mic_gain = es8311_mic_gain[ES8311_MIC_GAIN_SIZE - 1];
+	}
+	else if(volume_percent <= 0)
+	{
+		ret_mic_gain = es8311_mic_gain[0];
+	}
+	else
+	{
+		ret_mic_gain = es8311_mic_gain[volume_percent];
+	}
+#elif
+	if(volume_percent >= ES8388_MIC_GAIN_SIZE - 1)
+	{
+		ret_mic_gain = es8388_mic_gain[ES8388_MIC_GAIN_SIZE - 1];
+	}
+	else if(volume_percent <= 0)
+	{
+		ret_mic_gain = es8388_mic_gain[0];
+	}
+	else
+	{
+		ret_mic_gain = es8388_mic_gain[volume_percent];
+	}
+#endif
+	return ret_mic_gain;
+}
 /**@brief Select the on-board HW codec
  */
 static int hw_codec_on_board_set(void)
@@ -98,48 +156,50 @@ static int hw_codec_on_board_set(void)
 int hw_codec_volume_set(uint8_t set_val)
 {
 	int ret = 0;
+#if(CONFIG_AUDIO_DEV == HEADSET)
 	for(uint8_t retry = 0; retry < 10; retry++)
 	{
+#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
 		ret = es8311_codec_set_voice_volume(set_val);
+#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+		ret = es8388_set_voice_volume(set_val);
+#endif
 		if(ret == 0)
 		{
 			return ret;
 		}
 	}
+
+#else
+	//get_codec_mic_volume(set_val);
+#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
+	es8311_mic_gain_t gain = get_codec_mic_volume(set_val);
+	ret = es8311_set_mic_gain(gain);
+#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+	es8388_mic_gain_t = get_codec_mic_volume(set_val);
+	ret = es8388_set_mic_gain(set_val)
+#endif
+	if(ret)
+	{
+		return -1;
+	}
+#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
+	es8311_mic_gain_t read_back = es8311_get_mic_gain();
+#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+	//es_mic_gain_t read_back = es8388__mic
+	es8388_mic_gain_t read_back = es8388_get_mic_gain();
+#endif
+	if(read_back != gain)
+	{
+		return -1;
+	}
+#endif
 	LOG_ERR("Set codec volume failed:%d\r\n", ret);
 	return ret;
 }
 
 int hw_codec_volume_adjust(int8_t adjustment_db)
 {
-	//int ret;
-	// static uint32_t prev_volume_reg_val = OUT_VOLUME_DEFAULT;
-
-	// LOG_DBG("Adj dB in: %d", adjustment_db);
-
-	// uint32_t volume_reg_val;
-
-	// volume_reg_val &= CS47L63_OUT1L_VOL_MASK;
-
-	// /* The adjustment is in dB, 1 bit equals 0.5 dB,
-	//  * so multiply by 2 to get increments of 1 dB
-	//  */
-	// int32_t new_volume_reg_val = volume_reg_val + (adjustment_db * 2);
-
-	// if (new_volume_reg_val < 0) {
-	// 	LOG_WRN("Volume at MIN (-64dB)");
-	// 	new_volume_reg_val = 0;
-
-	// } else if (new_volume_reg_val > MAX_VOLUME_REG_VAL) {
-	// 	LOG_WRN("Volume at MAX (0dB)");
-	// 	new_volume_reg_val = MAX_VOLUME_REG_VAL;
-
-	// }
-
-	// prev_volume_reg_val = new_volume_reg_val;
-
-	// /* This is rounded down to nearest integer */
-	// LOG_DBG("Volume: %" PRId32 " dB", (new_volume_reg_val / 2) - MAX_VOLUME_DB);
 
 	return 0;
 }
@@ -147,8 +207,13 @@ int hw_codec_volume_adjust(int8_t adjustment_db)
 int hw_codec_volume_decrease(void)
 {
 	int ret;
+#if(CONFIG_AUDIO_DEV == HEADSET)
 	int l_current_volume = 0;
+#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
 	ret = es8311_codec_get_voice_volume(&l_current_volume);
+#elif(#if(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+	ret = es8388_get_voice_volume(&l_current_volume);
+#endif
 	if(ret == 0)
 	{
 		l_current_volume = l_current_volume - 4;
@@ -164,21 +229,51 @@ int hw_codec_volume_decrease(void)
 	}
 	for(uint8_t retry = 0; retry < 10; retry++)
 	{
+#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
 		ret = es8311_codec_set_voice_volume(l_current_volume);
+#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+		ret = es8388_set_voice_volume(l_current_volume);
+#endif
 		if(ret == 0)
 		{
 			break;
 		}
 	}
+#else
+#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
+	es8311_mic_gain_t current_gain = es8311_get_mic_gain();
+#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+	es8388_mic_gain_t current_gain = es8388_get_mic_gain();
+#endif
+	current_gain--;
+	if(current_gain <= 0)
+	{
+		current_gain = 0;
+	}
+#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
+	ret = es8311_set_mic_gain(current_gain);
+#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+	ret = es8388_set_mic_gain(current_gain);
+#endif
+	if(ret)
+	{
+		LOG_ERR("Fail to set mic gain");
+		return ret;
+	}
+#endif
 	return 0;
 }
 
 int hw_codec_volume_increase(void)
 {
 	int ret;
-
+#if(CONFIG_AUDIO_DEV == HEADSET)
 	int l_current_volume = 0;
+#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
 	ret = es8311_codec_get_voice_volume(&l_current_volume);
+#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+	ret = es8388_get_voice_volume(&l_current_volume);
+#endif
 	if(ret == 0)
 	{
 		l_current_volume = l_current_volume + 4;
@@ -194,25 +289,58 @@ int hw_codec_volume_increase(void)
 	}
 	for(uint8_t retry = 0; retry < 10; retry++)
 	{
+#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
 		ret = es8311_codec_set_voice_volume(l_current_volume);
+#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+		ret = es8388_set_voice_volume(l_current_volume);
+#endif
 		if(ret == 0)
 		{
 			break;
 		}
 	}
+#else
+	es8311_mic_gain_t current_gain = es8311_get_mic_gain();
+	current_gain++;
 
+#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
+	if(current_gain >= ES8311_MIC_GAIN_42DB)
+	{
+		current_gain = ES8311_MIC_GAIN_42DB;
+	}
+	ret = es8311_set_mic_gain(current_gain);
+#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+	if(current_gain >= MIC_GAIN_24DB)
+	{
+		current_gain = MIC_GAIN_24DB;
+	}
+#endif
+	if(ret)
+	{
+		LOG_ERR("Fail to set mic gain");
+		return ret;
+	}
+#endif
 	return 0;
 }
 
 int hw_codec_volume_mute(void)
 {
+#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
 	es8311_mute(1);
+#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+	es8388_set_voice_mute(1);
+#endif
 	return 0;
 }
 
 int hw_codec_volume_unmute(void)
 {
+#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
 	es8311_mute(0);
+#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+	es8388_set_voice_mute(0);
+#endif
 	return 0;
 }
 
@@ -246,6 +374,7 @@ int hw_codec_init(void)
 	LOG_INF("Mic shut down state: %d\r\n", gpio_pin_get_dt(&mic_shutdown));
 	static audio_hal_codec_config_t audio_config = AUDIO_CODEC_DEFAULT_CONFIG();
 	/*Config the codec*/
+#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
 	ret = es8311_init(&audio_config);
 	if(ret){
 		return ret;
@@ -253,6 +382,20 @@ int hw_codec_init(void)
 	// /*set default volume*/
 	es8311_codec_config_i2s(audio_config.codec_mode, &audio_config.i2s_iface);
 	es8311_codec_ctrl_state(AUDIO_HAL_CODEC_MODE_BOTH, AUDIO_HAL_CTRL_START);
+#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+	ret = es8388_init(&audio_config);
+	if(ret){
+		return ret;
+	}
+	// /*set default volume*/
+	es8388_config_i2s(audio_config.codec_mode, &audio_config.i2s_iface);
+	es8388_ctrl_state(AUDIO_HAL_CODEC_MODE_BOTH, AUDIO_HAL_CTRL_START);
+#endif
+#if(CONFIG_AUDIO_DEV == HEADSET)
+	hw_codec_volume_set(100); /*Set out put volume if device is slave*/
+#elif(CONFIG_AUDIO_DEV == GATEWAY)
+	hw_codec_volume_set(0); /*Set input volume if device is master*/
+#endif
 	return 0;
 }
 
@@ -292,8 +435,6 @@ static int cmd_input(const struct shell *shell, size_t argc, char **argv)
 	switch (idx) {
 	case LINE_IN: {
 		if (CONFIG_AUDIO_DEV == HEADSET) {
-			// ret = cs47l63_comm_reg_conf_write(line_in_enable,
-			// 				  ARRAY_SIZE(line_in_enable));
 			if (ret) {
 				shell_error(shell, "Failed to enable LINE-IN");
 				return ret;
@@ -307,8 +448,6 @@ static int cmd_input(const struct shell *shell, size_t argc, char **argv)
 	case PDM_MIC: {
 		if (CONFIG_AUDIO_DEV == GATEWAY) {
 		}
-
-
 		shell_print(shell, "Selected PDM mic as input");
 		break;
 	}
@@ -326,7 +465,7 @@ volume_handle_t audio_codec_volume_init(codec_dac_volume_config_t *config)
 {
 	if(config == NULL)
 	{
-		return -EINVAL; // Invalid argument
+		return NULL; // Invalid argument
 	}
     memcpy(&m_dac_volume_handle, config, sizeof(codec_dac_volume_config_t)); // try to use static memory, 
     if (!m_dac_volume_handle.offset_conv_volume) {
@@ -382,9 +521,6 @@ void audio_codec_volume_deinit(volume_handle_t vol_handle)
 		memset(&m_dac_volume_handle, 0, sizeof(m_dac_volume_handle)); //i try to avoid dynamic memory allocation :D, not safe for me lmao
     }
 }
-
-
-
 
 
 SHELL_STATIC_SUBCMD_SET_CREATE(hw_codec_cmd,

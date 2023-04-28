@@ -18,6 +18,14 @@ config AUDIO_DEV
 	  Setting this variable to 1 selects that the project is compiled
 	  as a HEADSET device.
 	  Setting to 2 will compile as a GATEWAY.
+config AUDIO_HARDWARE_CODEC
+	int "Select which codec type is for. 1=ES8311 or 2=ES8388"
+	range 1 2
+	default 1
+	help
+	  Setting this variable to 1 selects that the project is compiled
+	  as a ES8311 device.
+	  Setting to 2 will compile as a ES8388.
 
 choice NRF5340_AUDIO_TRANSPORT_MODE
 	prompt "Choose BIS or CIS for ISO transport"

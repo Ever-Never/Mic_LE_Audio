@@ -11,6 +11,7 @@
 #include "hw_codec.h"
 
 #include "pair_ultilities.h"
+#include "audio_hal.h"
 
 /* ES8311 address
  * 0x32:CE=1;0x30:CE=0
@@ -34,7 +35,7 @@
 #define MCLK_DIV_FRE        256
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(es8311, 5);
+LOG_MODULE_REGISTER(es8311, 3);
 //LOG_MODULE_REGISTER(es8388, CONFIG_ES8388_LOG_LEVEL);
 
 /*
@@ -158,7 +159,7 @@ static const struct _coeff_div coeff_div[] = {
     {1536000 , 96000, 0x01, 0x08, 0x01, 0x01, 0x01, 0x00, 0x7f, 0x02, 0x10, 0x10},
 };
 
-static es8311_cfg_t es8311_cfg =
+static es_cfg_t es8311_cfg =
 {
     .addr = ES8311_ADDR
 };
@@ -179,7 +180,7 @@ static codec_dac_volume_config_t *dac_vol_handle;
 }
 
 
-static es8311_cfg_t const *p_es8311_cfg;
+static es_cfg_t const *p_es8311_cfg;
 static const struct device *i2c_codec = DEVICE_DT_GET(DT_NODELABEL(i2c3));
 int8_t get_es8311_mclk_src(void);
 static int get_coeff(uint32_t mclk, uint32_t rate);
@@ -233,7 +234,7 @@ static int es8311_read_reg(uint8_t reg_add)
     return read_data;
 }
 
-int es8311_openbus(es8311_cfg_t const *p_cfg)
+int es8311_openbus(es_cfg_t const *p_cfg)
 {
     if (p_es8311_cfg != NULL || p_cfg == NULL) {
 		return -EINVAL;
@@ -241,7 +242,7 @@ int es8311_openbus(es8311_cfg_t const *p_cfg)
     p_es8311_cfg = p_cfg;
     return 0;
 }
-int es8311_closebus(es8311_cfg_t const *p_cfg)
+int es8311_closebus(es_cfg_t const *p_cfg)
 {
 	if (p_cfg == NULL || p_es8311_cfg != p_cfg || p_es8311_cfg == NULL) {
 		return -EINVAL;
@@ -775,6 +776,15 @@ int es8311_set_mic_gain(es8311_mic_gain_t gain_db)
 {
     int res = 0;
     res = es8311_write_reg(ES8311_ADC_REG16, gain_db); // MIC gain scale
+    LOG_INF("Set MIC gain: %d", gain_db);
+    return res;
+}
+es8311_mic_gain_t es8311_get_mic_gain(void)
+{
+    int res = 0;
+    res = es8311_read_reg(ES8311_ADC_REG16);
+    res = res & 0x07; /*Lay 3 bit dau*/
+    LOG_INF("Get MIC gain: %d", res);
     return res;
 }
 void es8311_read_all()

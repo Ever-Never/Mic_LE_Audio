@@ -97,14 +97,14 @@ static void encoder_thread(void *arg1, void *arg2, void *arg3)
 
 	int debug_trans_count = 0;
 	size_t encoded_data_size = 0;
-	size_t sine_encoded_data_size = 0;
+	//size_t sine_encoded_data_size = 0;
 
 	void *tmp_pcm_raw_data[CONFIG_FIFO_FRAME_SPLIT_NUM];
 	char pcm_raw_data[FRAME_SIZE_BYTES];
-	char sine_raw_data[FRAME_SIZE_BYTES];
+	//char sine_raw_data[FRAME_SIZE_BYTES];
 
 	static uint8_t *encoded_data;
-	static uint8_t *p_sine_encoded_data;
+	//static uint8_t *p_sine_encoded_data;
 	static size_t pcm_block_size;
 	static uint32_t test_tone_finite_pos;
 

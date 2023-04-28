@@ -56,8 +56,7 @@ int hw_output_set_level(gpio_output_t output_pin, int level)
 }
 void hw_output_button_handle()
 {
-    int ret = 0;
-    bool on_off_status = false;
+    //bool on_off_status = false;
     static bool m_is_first_time = false;
     /*First time pressed -> onl*/
     if(m_is_first_time)

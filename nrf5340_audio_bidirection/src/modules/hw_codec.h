@@ -8,7 +8,8 @@
 #define _HW_CODEC_H_
 #include <math.h>
 #include <stdint.h>
-
+#include "audio_hal.h"
+#include "es8311.h"
 #define VPA        (5.0)
 #define VDAC       (3.3)
 #define MAX_GAIN   (20.0 * log10(VPA / VDAC))

@@ -382,7 +382,7 @@ uint8_t pair_ultilities_flash_read_volume_cfg(uint8_t *volume_config)
         static bool m_is_first_time = false;
         if(m_is_first_time == false){
             m_is_first_time = true;
-            LOG_INF("Found volume config user_volume: %u - regsister:0x%02x", *volume_config);
+            //LOG_INF("Found volume config user_volume: %u - regsister:0x%02x", *volume_config);
         }
         return 0;
     }
