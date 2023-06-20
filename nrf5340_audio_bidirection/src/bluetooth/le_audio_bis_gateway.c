@@ -145,32 +145,29 @@ static struct bt_audio_stream_ops stream_ops = { .sent = stream_sent_cb,
 						 .stopped = stream_stopped_cb };
 
 /*User utilities*/
-static void get_mac_address(uint8_t *mac_address) {
-}
 static int adv_create(void)
 {
 	int ret;
-	bt_addr_le_t mac_addr;
+	//bt_addr_le_t mac_addr;
 	//mac_addr.
-	size_t mac_size;
+	//size_t mac_size;
 	/*step1: Load the mac address of device*/
-	bt_id_get(&mac_addr, &mac_size);
-	//get_mac_address(get_mac_address);
-	LOG_HEXDUMP_INF(mac_addr.a.val, 6, "Device mac address:");
+	//bt_id_get(&mac_addr, &mac_size);
+	//LOG_HEXDUMP_INF(mac_addr.a.val, 6, "Device mac address:");
 	/* Broadcast Audio Streaming Endpoint advertising data */
 	NET_BUF_SIMPLE_DEFINE(ad_buf, BT_UUID_SIZE_16 + BT_AUDIO_BROADCAST_ID_SIZE);
 	NET_BUF_SIMPLE_DEFINE(base_buf, 128);
-	struct bt_data ext_ad[2];
+	struct bt_data ext_ad;
 	struct bt_data per_ad;
 	uint32_t broadcast_id;
-	char name[64];
-	sprintf(name,"%s-%02x:%02x:%02x:%02x:%02x:%02x", "LavalierMicrophone"
-											 , mac_addr.a.val[0]
-											 , mac_addr.a.val[1]
-											 , mac_addr.a.val[2]
-											 , mac_addr.a.val[3]
-											 , mac_addr.a.val[4]
-											 , mac_addr.a.val[5]);
+	// char name[64];
+	// sprintf(name,"%s-%02x:%02x:%02x:%02x:%02x:%02x", "MICBLE"
+	// 										 , mac_addr.a.val[0]
+	// 										 , mac_addr.a.val[1]
+	// 										 , mac_addr.a.val[2]
+	// 										 , mac_addr.a.val[3]
+	// 										 , mac_addr.a.val[4]
+	// 										 , mac_addr.a.val[5]);
 
 
 	/* Create a non-connectable non-scannable advertising set */
@@ -196,15 +193,15 @@ static int adv_create(void)
 	net_buf_simple_add_le16(&ad_buf, BT_UUID_BROADCAST_AUDIO_VAL);
 	net_buf_simple_add_le24(&ad_buf, broadcast_id);
 
-	ext_ad[0].type = BT_DATA_BROADCAST_NAME;
-	ext_ad[0].data = name;
-	ext_ad[0].data_len = strlen(name);
+	// ext_ad[0].type = BT_DATA_BROADCAST_NAME;
+	// ext_ad[0].data = name;
+	// ext_ad[0].data_len = strlen(name);
 
-	ext_ad[1].type = BT_DATA_SVC_DATA16;
-	ext_ad[1].data_len = ad_buf.len;
-	ext_ad[1].data = ad_buf.data;
+	ext_ad.type = BT_DATA_SVC_DATA16;
+	ext_ad.data_len = ad_buf.len;
+	ext_ad.data = ad_buf.data;
 
-	ret = bt_le_ext_adv_set_data(adv, ext_ad, ARRAY_SIZE(ext_ad), NULL, 0);
+	ret = bt_le_ext_adv_set_data(adv, &ext_ad, 1, NULL, 0);
 	if (ret) {
 		LOG_ERR("Failed to set extended advertising data: %d", ret);
 		return ret;
@@ -340,9 +337,22 @@ int le_audio_send(uint8_t const *const data, size_t size)
 	static bool wrn_printed[CONFIG_BT_AUDIO_BROADCAST_SRC_STREAM_COUNT];
 	struct net_buf *buf;
 	size_t num_streams = ARRAY_SIZE(audio_streams);
-	size_t data_size = size / num_streams;
+	size_t data_size;
+
+#if (CONFIG_BIS_STEREO_HEADSET)
+	data_size = size;
+#else
+	if (1) {
+		data_size = size / num_streams;
+	} else {
+		LOG_ERR("Num encoded channels must be 1 or equal to num streams");
+		return -EINVAL;
+	}
+#endif
 	/**/
-	
+//	data_size = size / num_streams;
+
+
 	for (int i = 0; i < num_streams; i++) {
 		if (audio_streams[i].ep->status.state != BT_AUDIO_EP_STATE_STREAMING) {
 			LOG_INF("Stream %d not in streaming state", i);

@@ -53,7 +53,7 @@ typedef enum {
 } es8388_mic_gain_t;
 
 /* ES8388 address */
-#define ES8388_ADDR 0x20  /*!< 0x22:CE=1;0x20:CE=0*/
+#define ES8388_ADDR 0x10  /*!< 0x22:CE=1;0x20:CE=0*/
 
 /* ES8388 register */
 #define ES8388_CONTROL1         0x00
@@ -158,7 +158,7 @@ int es8388_config_fmt(es_module_t mod, es_i2s_fmt_t cfg);
  *     - ESP_OK
  *     - ESP_FAIL
  */
-int es8388_i2s_config_clock(es_i2s_clock_t cfg);
+int es8388_i2s_config_clock(es8388_i2s_clock_t cfg);
 
 /**
  * @brief Configure ES8388 data sample bits
@@ -256,7 +256,7 @@ int es8388_set_mic_gain(es8388_mic_gain_t gain);
  *     - ESP_FAIL Parameter error
  *     - ESP_OK   Success
  */
-int es8388_config_adc_input(es_adc_input_t input);
+int es8388_config_adc_input(es8388_adc_input_t input);
 
 /**
  * @brief Set ES8388 dac output mode
@@ -267,7 +267,7 @@ int es8388_config_adc_input(es_adc_input_t input);
  *     - ESP_FAIL Parameter error
  *     - ESP_OK   Success
  */
-int es8388_config_dac_output(es_dac_output_t output);
+int es8388_config_dac_output(es8388_dac_output_t output);
 
 /**
  * @brief Write ES8388 register
@@ -332,7 +332,15 @@ void es8388_pa_power(bool enable);
  *      - void
  */
 es8388_mic_gain_t es8388_get_mic_gain();
-
+/**
+ * @brief Hardware select input
+ *
+ * @param enable true for enable PA power, false for disable PA power
+ *
+ * @return
+ *      - void
+ */
+int es8388_select_input(audio_hal_adc_input_t adc_input);
 #ifdef __cplusplus
 }
 #endif

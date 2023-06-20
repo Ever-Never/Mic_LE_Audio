@@ -34,6 +34,10 @@
 #include "ble_custom_nus_central.h"
 #include "ctrl_events.h"
 #include "macros_common.h"
+#include <zephyr/bluetooth/bluetooth.h>
+#include <zephyr/bluetooth/audio/audio.h>
+#include "le_audio.h"
+//#include "broadcast_sink.h"
 #define LOG_MODULE_NAME central_uart
 LOG_MODULE_REGISTER(LOG_MODULE_NAME);
 
@@ -61,6 +65,7 @@ static volatile bool m_device_is_in_pair_mode = false;
 
 static void nus_client_create_pair_packet(uint8_t *p_data_out);
 static void gatt_discover(struct bt_conn *conn);
+static int scan_deinit();
 
 
 static void security_changed(struct bt_conn *conn, bt_security_t level,
@@ -273,6 +278,22 @@ static uint8_t ble_data_received(struct bt_nus_client *nus, const uint8_t *data,
 	}
 	pair_ultilities_flash_save_gateway_info(pair_reponse.gateway_mac);
 	k_timer_stop(&central_pair_timer);
+	if(default_conn)
+	{
+		/*Disconnect the device*/
+		k_timer_stop(&central_pair_timer);
+		bt_conn_disconnect(default_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
+	}
+	uint8_t err = scan_deinit();
+	if(err)
+	{
+		LOG_ERR("Scanning error to stop (err :%d)\r\n", err);
+		return err;
+	}
+	err = bt_audio_broadcast_sink_scan_start(BT_LE_SCAN_PASSIVE);
+	if (err) {
+			LOG_ERR("%s - Unable to start scanning for broadcast sources", __FUNCTION__);
+	}
 	return BT_GATT_ITER_CONTINUE;
 }
 
@@ -356,6 +377,7 @@ static int scan_deinit()
 	LOG_ERR("Filters cannot be turned off (err %d)", err);
 		return err;
 	}
+	return err;
 }
 
 
@@ -383,6 +405,12 @@ int ble_custom_nus_central_start_find_pair_device(ble_custom_nus_fair_done_callb
 	int err = 0;
 	if(m_device_is_in_pair_mode == false)
 	{
+		m_device_is_in_pair_mode = true;
+		err = le_audio_disable();
+		if(err)
+		{	
+			LOG_ERR("LE Audio disable failed: %d", err);
+		}
 		err = bt_scan_filter_enable(BT_SCAN_NAME_FILTER, false);
 		if (err) {
 			LOG_ERR("Filters cannot be turned on (err %d)", err);
@@ -401,13 +429,14 @@ int ble_custom_nus_central_start_find_pair_device(ble_custom_nus_fair_done_callb
 			return err;
 		}
 		LOG_INF("Scanning for pair device");
-		m_device_is_in_pair_mode = true;
+		
 	}
 	else
 	{
 		LOG_ERR("Device central is altreay in pair mode");
 		return err;
 	}
+	return err;
 }
 void ble_custome_nus_central_stop_find_pair_device()
 {
@@ -433,6 +462,10 @@ void ble_custome_nus_central_stop_find_pair_device()
 			bt_conn_disconnect(default_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
 		}
 		m_device_is_in_pair_mode = false;
+		int8_t ret = bt_audio_broadcast_sink_scan_start(BT_LE_SCAN_PASSIVE);
+		if (ret) {
+			LOG_ERR("Unable to start scanning for broadcast sources");
+		}
 	}
 	else 
 	{

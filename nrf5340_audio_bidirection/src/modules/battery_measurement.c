@@ -27,7 +27,8 @@ static const struct device *adc_battery;
 #define ADC_ACQ_TIME_US 40
 #define VOLTAGE_STABILIZE_TIME_US 5
 
-
+#define BATTERY_VOLTAGE_MAX_MV	4200
+#define BATTERY_VOLTAGE_MIN_MV	2700
 
 
 static int16_t sample_buffer;
@@ -95,7 +96,7 @@ int battery_raw_data_get(uint16_t *bat_vol)
     }
     battery_voltage = ((sample_buffer * BATTERY_REFERENCE_VOLTAGE)/ BATTERY_ADC_RESOLUTION) * BATTERY_ADC_GAIN; 
     battery_voltage = battery_voltage * BATTERY_VOLTAGE_DIVIDER_RATIO;
-    LOG_INF("Battery voltage: %u - reg val: %u\r\n", battery_voltage, sample_buffer);
+    LOG_INF("Battery voltage: %u - reg val: %u - BatteryPercent:%u%%\r\n", battery_voltage, (uint16_t)sample_buffer);
     return ret;
 }
 

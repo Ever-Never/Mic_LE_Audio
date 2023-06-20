@@ -122,16 +122,42 @@ int hw_codec_soft_reset(void);
  * @return 0 if successful, error otherwise
  */
 int hw_codec_init(void);
+/**
+ * @brief Set the codec input: line or mic
+ *
+ * @return 0 if successful, error otherwise
+ */
+int hw_codec_set_input(bool line_true);
 
-
+/**
+ * @brief
+ *
+ * @return
+ */
 uint8_t audio_codec_get_dac_reg_value(volume_handle_t vol_handle, int volume);
-
+/**
+ * @brief
+ *
+ * @return
+ */
 float audio_codec_cal_dac_volume(volume_handle_t vol_handle);
-
+/**
+ * @brief
+ *
+ * @return
+ */
 volume_handle_t audio_codec_volume_init(codec_dac_volume_config_t *config);
-
+/**
+ * @brief
+ *
+ * @return
+ */
 void audio_codec_volume_deinit(volume_handle_t vol_handle);
-
+/**
+ * @brief
+ *
+ * @return
+ */
 float audio_codec_cal_dac_volume(volume_handle_t vol_handle);
 
 #endif /* _HW_CODEC_H_ */

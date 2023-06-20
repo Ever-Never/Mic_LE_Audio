@@ -84,8 +84,11 @@ static void audio_headset_configure(void)
 		ERR_CHK_MSG(-EINVAL, "No codec selected");
 	}
 #endif /* (CONFIG_STREAM_BIDIRECTIONAL) */
-
+#if(CONFIG_BIS_STEREO_HEADSET)
+	sw_codec_cfg.decoder.channel_mode = SW_CODEC_STEREO;
+#else
 	sw_codec_cfg.decoder.channel_mode = SW_CODEC_MONO;
+#endif
 	sw_codec_cfg.decoder.enabled = true;
 }
 
@@ -144,10 +147,6 @@ static void encoder_thread(void *arg1, void *arg2, void *arg3)
 			//LOG_INF("Before code: %u",k_uptime_get_32());
 			ret = sw_codec_encode(pcm_raw_data, FRAME_SIZE_BYTES, &encoded_data,
 					      &encoded_data_size);
-						//    			ret = sw_codec_encode(pcm_raw_data, FRAME_SIZE_BYTES, &encoded_data,
-					    //    &encoded_data_size);
-			//LOG_INF("After code: %u",k_uptime_get_32());
-			//ret = sw_codec_encode(sine_raw_data, FRAME_SIZE_BYTES, &p_sine_encoded_data, &sine_encoded_data_size);
 
 			ERR_CHK_MSG(ret, "Encode failed");
 		}
@@ -385,8 +384,6 @@ void audio_system_init(void)
 	ret = audio_datapath_init();
 	ERR_CHK(ret);
 	audio_i2s_init();
-//TODO : Wait until new implementation of hardware codec successfully :D
-//#if(CONFIG_AUDIO_DEV == GATEWAY)
 	ret = hw_codec_init();
 	ERR_CHK(ret);
 //#endif

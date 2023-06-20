@@ -21,21 +21,36 @@
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(button_handler, CONFIG_MODULE_BUTTON_HANDLER_LOG_LEVEL);
 #define BUTTON_DEBOUNCE		50
-#define BUTTON_LONGPRESS	3000
+#define BUTTON_LONGPRESS	2500
 /*total tick to be refered as two time pressed*/
 #define BUTTON_TIME_BETWEEN_PRESS	1000	
 
 
 /* How many buttons does the module support. Increase at memory cost */
-#define BUTTONS_MAX 4
+#define BUTTONS_MAX 5
 #define BASE_10 10
+// static void button_4_timer(struct k_timer *timer);
+// static void button_3_timer(struct k_timer *timer);
+// static void button_3_timer(struct k_timer *timer);
+// static void button_3_timer(struct k_timer *timer);
+// static void button_3_timer(struct k_timer *timer);
+//static bool debounce_is_ongoing;
 
-static bool debounce_is_ongoing;
 static struct gpio_callback btn_callback[BUTTONS_MAX];
 static const struct device *gpio_53_dev;
 static const struct device *gpio_54_dev;
-static const struct gpio_dt_spec *button_spec;
 
+
+//static const struct gpio_dt_spec *button_spec;
+
+
+#define BUTTON_LINE_IN_DEV gpio_54_dev
+
+#define BUTTON_VOLUME_DOWN_INDEX 0
+#define BUTTON_VOLUME_UP_INDEX 1
+#define BUTTON_PAIR_INDEX	2
+#define BUTTON_ON_OFF_INDEX	3
+#define BUTTON_MIC_DET_INDEX 4
 
 static void button_scan(uint8_t button_idx);
 
@@ -64,6 +79,12 @@ static struct btn_config btn_cfg[] = {
 		.btn_cfg_mask = DT_GPIO_FLAGS(DT_ALIAS(sw3), gpios),
 		.button_active = BUTTON_ACTIVE_HIGH,
 	},
+	{
+		.btn_name = STRINGIFY(LINE_IN_DET),
+		.btn_pin = LINE_IN_DET,
+		.btn_cfg_mask = DT_GPIO_FLAGS(DT_ALIAS(linedet), gpios),
+		.button_active = BUTTON_ACTIVE_LOW,
+	}
 };
 
 typedef void (*button_send_event)(uint8_t button_index);
@@ -138,22 +159,33 @@ static void button_3_timer(struct k_timer *timer)
 {
 	button_scan(3);
 }
+static void button_4_timer(struct k_timer *timer);
+
 
 K_TIMER_DEFINE(button0_timer, button_0_timer, NULL);
 K_TIMER_DEFINE(button1_timer, button_1_timer, NULL);
 K_TIMER_DEFINE(button2_timer, button_2_timer, NULL);
 K_TIMER_DEFINE(button3_timer, button_3_timer, NULL);
+K_TIMER_DEFINE(button4_timer, button_4_timer, NULL);
 
-static struct k_timer *buttons_timer[4] = {
+static struct k_timer *buttons_timer[5] = {
 	&button0_timer,
 	&button1_timer,
 	&button2_timer,
-	&button3_timer
+	&button3_timer,
+	&button4_timer
 };
-/**@brief Simple debouncer for buttons
- *
- * @note Needed as low-level driver debouce is not
- * implemented in Zephyr for nRF53 yet
+static void button_4_timer(struct k_timer *timer)
+{
+	//k_timer_stop(buttons_timer[BUTTON_MIC_DET_INDEX]);
+	button_send_event_pressed(BUTTON_MIC_DET_INDEX);
+	btn_cfg[BUTTON_MIC_DET_INDEX].debounce_state = STATE_IDLE;
+	//k_timer_stop(&button4_timer);
+	return;
+}
+/*
+*@brief: Simple debouncer for buttons, just for a pressed , multiple pressed, long pressed haven't been supported yet
+ * @author: TueTD
  */
 
 static void button_scan(uint8_t button_idx)
@@ -204,7 +236,7 @@ static void button_scan(uint8_t button_idx)
 		}
 		else
 		{
-			//LOG_DBG("Button:%d - current tick:%d\r\n", button_idx, btn_cfg[button_idx].current_tick);
+			LOG_DBG("Button:%d - current tick:%d\r\n", button_idx, btn_cfg[button_idx].current_tick);
 			if(btn_cfg[button_idx].button_multiple_press_count)
 			{
 				//btn_cfg[button_idx].time_between_press;
@@ -285,10 +317,10 @@ static void button_isr(const struct device *port, struct gpio_callback *cb, uint
 {
 	int ret;
 	//struct event_t event;
-	if (debounce_is_ongoing) {
-		LOG_WRN("Btn debounce in action");
-		return;
-	}
+	// if (debounce_is_ongoing) {
+	// 	LOG_WRN("Btn debounce in action");
+	// 	return;
+	// }
 
 	uint32_t btn_pin = 0;
 	uint32_t btn_idx = 0;
@@ -299,12 +331,28 @@ static void button_isr(const struct device *port, struct gpio_callback *cb, uint
 	ret = pin_to_btn_idx(btn_pin, &btn_idx);
 	ERR_CHK(ret);
 
-	//LOG_INF("Pushed button idx: %d pin: %d name: %s", btn_idx, btn_pin,
-	//	btn_cfg[btn_idx].btn_name);
+	LOG_DBG("Pushed button idx: %d pin: %d name: %s", btn_idx, btn_pin,
+		btn_cfg[btn_idx].btn_name);
+	/*
+		Th1: Neu input interrupt la MIC_DETECT -> post event cho main :V
+		TH2: Neu input interrupt la cac nut ban -> debounce then post event
+	*/
+	// if(btn_idx == BUTTON_MIC_DET_INDEX)
+	// {	
+	// 	button_send_event_pressed(btn_idx);
+	// 	return;
+	// }
 	if(btn_cfg[btn_idx].debounce_state == STATE_IDLE)
 	{
 		btn_cfg[btn_idx].debounce_state = STATE_DEBOUCING;
-		k_timer_start(buttons_timer[btn_idx], K_MSEC(1), K_MSEC(1));
+		if(btn_idx != 4)
+		{
+			k_timer_start(buttons_timer[btn_idx], K_MSEC(1), K_MSEC(1));
+		}
+		else
+		{
+			k_timer_start(buttons_timer[btn_idx], K_MSEC(100), K_NO_WAIT);
+		}
 	}
 	// event.button_activity.button_pin = btn_pin;
 	// event.button_activity.button_action = BUTTON_PRESS;
@@ -354,7 +402,22 @@ int button_pressed(gpio_pin_t button_pin, bool *button_pressed)
 
 	return 0;
 }
-
+bool app_button_read_detect_mic(void)
+{
+	if(!device_is_ready(gpio_54_dev)) /*gpio dev of mic detect*/
+	{
+		return 1;
+	}
+	return gpio_pin_get(gpio_54_dev, btn_cfg[BUTTON_MIC_DET_INDEX].btn_pin);
+}
+bool app_button_read_onoff(void)
+{
+	if(!device_is_ready(gpio_53_dev)) /*gpio dev of mic detect*/
+	{
+		return 1;
+	}
+	return gpio_pin_get(gpio_53_dev, btn_cfg[BUTTON_ON_OFF_INDEX].btn_pin);
+}
 int button_handler_init(void)
 {
 	int ret;
@@ -373,8 +436,10 @@ int button_handler_init(void)
 		LOG_ERR("Device driver not ready.");
 		return -ENODEV;
 	}
-	for (uint8_t i = 0; i < ARRAY_SIZE(btn_cfg); i++) {
-		if(i != 1)
+	
+	for (uint8_t i = 0; i < ARRAY_SIZE(btn_cfg); i++) 
+	{
+		if(i != BUTTON_VOLUME_UP_INDEX && i != BUTTON_MIC_DET_INDEX)
 		{
 			ret = gpio_pin_configure(gpio_53_dev, btn_cfg[i].btn_pin,
 					 GPIO_INPUT | btn_cfg[i].btn_cfg_mask);
@@ -387,14 +452,17 @@ int button_handler_init(void)
 		if (ret) {
 			return ret;
 		}
+		//if(i != (ARRAY_SIZE(btn_cfg) - 1)) // add callback except the line in detect
+		//{
 		gpio_init_callback(&btn_callback[i], button_isr, BIT(btn_cfg[i].btn_pin));
-		if(i != 1)
+		//}
+		if(i != BUTTON_VOLUME_UP_INDEX && i!= BUTTON_MIC_DET_INDEX)
 		{
 			ret = gpio_add_callback(gpio_53_dev, &btn_callback[i]);
 			if (ret) {
 				return ret;
 			}
-			if(i != 3)
+			if(i != BUTTON_ON_OFF_INDEX)
 			{
 				ret = gpio_pin_interrupt_configure(gpio_53_dev, btn_cfg[i].btn_pin, GPIO_INT_EDGE_FALLING);
 			}
@@ -410,7 +478,16 @@ int button_handler_init(void)
 			if (ret) {
 				return ret;
 			}
-		   	ret = gpio_pin_interrupt_configure(gpio_54_dev, btn_cfg[i].btn_pin, GPIO_INT_EDGE_FALLING);
+			if(i != BUTTON_MIC_DET_INDEX)
+			{
+		   		ret = gpio_pin_interrupt_configure(gpio_54_dev, btn_cfg[i].btn_pin, GPIO_INT_EDGE_FALLING);
+				LOG_INF("GPIO mic detect init");
+			}
+			else
+			{
+				ret = gpio_pin_interrupt_configure(gpio_54_dev, btn_cfg[i].btn_pin, GPIO_INT_EDGE_BOTH);
+				LOG_INF("GPIO mic detect init");
+			}
 		}
 		if (ret) {
 			return ret;

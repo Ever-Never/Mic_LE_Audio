@@ -8,7 +8,8 @@
 #define _MACROS_H_
 
 #include <errno.h>
-
+#include <zephyr/toolchain.h>
+#include <zephyr/sys/reboot.h>
 /* Error check. If != 0, print err code and call _SysFatalErrorHandler in main.
  * For debug mode all LEDs are turned on in case of an error.
  */
@@ -16,13 +17,15 @@
 #define PRINT_AND_OOPS(code)                                                                       \
 	do {                                                                                       \
 		LOG_ERR("ERR_CHK Err_code: [%d] @ line: %d\t", code, __LINE__);                    \
-		k_oops();                                                                          \
+		k_oops();                                                                  \
+		sys_reboot(SYS_REBOOT_WARM);											\
 	} while (0)
 
 #define ERR_CHK(err_code)                                                                          \
 	do {                                                                                       \
 		if (err_code) {                                                                    \
 			PRINT_AND_OOPS(err_code);                                                  \
+			sys_reboot(SYS_REBOOT_WARM);												\
 		}                                                                                  \
 	} while (0)
 
@@ -31,6 +34,7 @@
 		if (err_code) {                                                                    \
 			LOG_ERR("%s", msg);                                                        \
 			PRINT_AND_OOPS(err_code);                                                  \
+			sys_reboot(SYS_REBOOT_WARM);											 	\
 		}                                                                                  \
 	} while (0)
 

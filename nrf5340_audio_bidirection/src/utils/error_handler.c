@@ -41,8 +41,8 @@ void error_handler(unsigned int reason, const z_arch_esf_t *esf)
 #if (CONFIG_LOG)
 	LOG_PANIC();
 #endif /* (CONFIG_LOG) */
-	led_error_indication();
-	sys_reboot(SYS_REBOOT_COLD);
+	//led_error_indication();
+	sys_reboot(SYS_REBOOT_WARM);
 #endif /* (CONFIG_DEBUG) */
 	CODE_UNREACHABLE;
 }

@@ -31,6 +31,7 @@
 #include "ble_custom_nus_central.h"
 #include "pair_ultilities.h"
 #include "hw_output.h"
+#include "dfu_entry.h"
 #include "battery_measurement.h"
 
 LOG_MODULE_REGISTER(streamctrl, CONFIG_STREAMCTRL_LOG_LEVEL);
@@ -50,6 +51,8 @@ static k_tid_t audio_datapath_thread_id;
 K_THREAD_STACK_DEFINE(audio_datapath_thread_stack, CONFIG_AUDIO_DATAPATH_STACK_SIZE);
 
 static enum stream_state strm_state = STATE_PAUSED;
+
+typedef void (*button_pressed_cb_handler)(button_pin_t button_pin);
 
 #if (CONFIG_BLE_ISO_TEST_PATTERN)
 
@@ -226,20 +229,20 @@ void streamctrl_encoded_data_send(void const *const data, size_t len)
 	}
 }
 
-/* Handle button activity events */
-static void button_evt_handler(struct button_evt event)
+/*
+	@brief: Handling button pressed event
+*/
+static void button_pressed_event_handler(button_pin_t button_pin)
 {
-	int ret;
-
-	LOG_DBG("Got btn evt from queue - id = %d, action = %d", event.button_pin,
-		event.button_action);
-
-	if (event.button_action != BUTTON_PRESS) {
-		LOG_WRN("Unhandled button action");
-		return;
+	uint8_t ret = 0;
+	switch (button_pin) {
+	case LINE_IN_DET:
+	{
+		bool line_in = app_button_read_detect_mic();
+		LOG_INF("Detect line in stt: %d", line_in);
+		hw_codec_set_input(line_in);
 	}
-
-	switch (event.button_pin) {
+	break;
 	case BUTTON_PAIR:
 	{
 		LOG_INF("Button Pair");
@@ -247,11 +250,12 @@ static void button_evt_handler(struct button_evt event)
 		ret = le_audio_start_scan();
 #elif(CONFIG_AUDIO_DEV == HEADSET && IS_ENABLED(CONFIG_TRANSPORT_CIS))
 				//start adversting if slave :D
-		le_audio_start_adv();
+
 #endif
-		ret = le_audio_disable();
+		
 		//ERR_CHK(ret);
 #if(CONFIG_AUDIO_DEV == GATEWAY && IS_ENABLED(CONFIG_TRANSPORT_BIS))
+		ret = le_audio_disable();
 		ret = ble_custom_nus_start_pair(le_audio_enable);
 #elif(CONFIG_AUDIO_DEV == HEADSET && IS_ENABLED(CONFIG_TRANSPORT_BIS))
 		ret = ble_custom_nus_central_start_find_pair_device(le_audio_enable);
@@ -266,19 +270,60 @@ static void button_evt_handler(struct button_evt event)
 
 	case BUTTON_VOLUME_UP:
 		hw_codec_volume_increase();
-		uint16_t data;
-		battery_raw_data_get(&data);
-		break;
-
+	break;
+	
 	case BUTTON_VOLUME_DOWN:
 		hw_codec_volume_decrease();
-		break;
-	case BUTTON_ON_OFF:
-		hw_output_button_handle();
-		break;
-
+	break;
 	default:
-		LOG_WRN("Unexpected/unhandled button id: %d", event.button_pin);
+		LOG_WRN("Unexpected/unhandled button id: %d", button_pin);
+	}
+}
+static void button_long_pressed_event_handler(button_pin_t button_pin)
+{
+	switch (button_pin) {
+		case BUTTON_PAIR:
+		{
+			/*TODO:Enter DFU mode*/
+			//dfu_entry_check();
+			break;
+		}
+		case BUTTON_ON_OFF:
+		{
+			//hw_output_set_level(GPIO_ON_OFF_CTRL, 1);
+			while(app_button_read_onoff() == 0)
+			{
+				LOG_INF("Prepare to turn off device - turn off all leds and disable le audio");
+				k_msleep(10);
+				//le_audio_disable();
+				led_off(LED_POWER);
+				led_off(LED_BLE);
+			}
+			hw_output_button_handle();
+		}
+	}
+}
+static button_pressed_cb_handler m_button_handler[] = 
+{
+	button_pressed_event_handler,
+	button_long_pressed_event_handler
+};
+/* Handle button activity events */
+static void button_evt_handler(struct button_evt event)
+{
+	//int ret;
+
+	LOG_DBG("Got btn evt from queue - id = %d, action = %d", event.button_pin,
+		event.button_action);
+
+	if (event.button_action > BUTTON_LONG_PRESS) {
+		LOG_WRN("Unhandled button action");
+		return;
+	}
+	if(m_button_handler[event.button_action])
+	{
+		m_button_handler[event.button_action](event.button_pin);
+		return;
 	}
 }
 
@@ -304,7 +349,7 @@ static void le_audio_evt_handler(enum le_audio_evt_type event)
 		//}
 		//app_led_indicator_stop_both();
 		app_led_indicator_streaming();
-		ERR_CHK(ret);
+		//ERR_CHK(ret);
 #endif
 		break;
 
@@ -390,7 +435,7 @@ void streamctrl_event_handler(void)
 	 * never return unless it has an event, that is why we can ignore the
 	 * return value
 	 */
-	(void)ctrl_events_get(&my_event, K_FOREVER);
+	(void)ctrl_events_get(&my_event, K_FOREVER); /*Shitty this wait for event -> so every code no to be event loops :(*/
 
 	switch (my_event.event_source) {
 	case EVT_SRC_BUTTON:

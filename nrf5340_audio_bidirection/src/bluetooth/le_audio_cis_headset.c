@@ -234,7 +234,7 @@ static void advertising_process(struct k_work *work)
 			BT_DATA(BT_DATA_MANUFACTURER_DATA, packet.raw, sizeof(le_audio_adv_data_t))
 			//BT_DATA(BT_DATA_NAME_SHORTENED, device_name, strlen(device_name))
 		};
-		ret = bt_le_ext_adv_set_data(adv_ext, user_peer, ARRAY_SIZE(user_peer), NULL, 0);
+		ret = bt_le_ext_adv_set_data(adv_ext, ad_peer, ARRAY_SIZE(ad_peer), NULL, 0);
 		if (ret) {
 			LOG_ERR("Failed to set advertising data. Err: %d", ret);
 			return;
@@ -396,7 +396,7 @@ static int lc3_stop_cb(struct bt_audio_stream *stream)
 	int ret;
 
 	LOG_DBG("Stop: stream %p", (void *)stream);
-
+	
 	ret = ctrl_events_le_audio_event_send(LE_AUDIO_EVT_NOT_STREAMING);
 	ERR_CHK(ret);
 
@@ -449,7 +449,7 @@ static void stream_stop_cb(struct bt_audio_stream *stream)
 	int ret;
 
 	LOG_INF("Stream stopped");
-
+	//sys_reboot(SYS_REBOOT_WARM);
 	ret = ctrl_events_le_audio_event_send(LE_AUDIO_EVT_NOT_STREAMING);
 	ERR_CHK(ret);
 }
@@ -725,7 +725,7 @@ int le_audio_enable(le_audio_receive_cb recv_cb)
 		LOG_ERR("Initialize failed");
 		return ret;
 	}
-	/*advertising_start();*/
+	advertising_start();
 	return 0;
 }
 int le_audio_start_adv(void)

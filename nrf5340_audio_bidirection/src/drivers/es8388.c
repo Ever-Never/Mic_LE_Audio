@@ -51,7 +51,7 @@ LOG_MODULE_REGISTER(es8388, 3);
     .user_volume = 0,                                       \
     .offset_conv_volume = NULL,                             \
 }
-
+static audio_hal_adc_input_t m_adc_input = AUDIO_HAL_ADC_INVALID;
 static codec_dac_volume_config_t *dac_vol_handle;
 static es_cfg_t const *p_es8388_cfg;
 static es_cfg_t es8388_cfg =
@@ -80,23 +80,27 @@ int es8388_closebus(es_cfg_t const *p_cfg)
 static int es_read_reg(uint8_t reg_add, uint8_t *p_data)
 {
     int ret;
-    struct i2c_msg msgs[2];
+    struct i2c_msg msgs;
     //uint8_t write_data[2] = {reg_add, 0};
     uint8_t read_data;
     if (!device_is_ready(i2c_codec) || p_es8388_cfg == NULL) {
 		return -EIO;
 	}
-    memset(msgs, 0, sizeof(msgs));
+    memset(&msgs, 0, sizeof(msgs));
 
-    msgs[0].buf = &reg_add;
-    msgs[0].len = 1;
-    msgs[0].flags = I2C_MSG_WRITE;
+    msgs.buf = &reg_add;
+    msgs.len = 1;
+    msgs.flags = I2C_MSG_WRITE ;
 
-    msgs[1].buf = (uint8_t*)&read_data;
-    msgs[1].len = 1;
-    msgs[1].flags = I2C_MSG_READ;
+    ret = i2c_transfer(i2c_codec, &msgs, 1 , ES8388_ADDR);
 
-    ret = i2c_transfer(i2c_codec, msgs, 2 , ES8388_ADDR);
+
+    msgs.buf = (uint8_t*)&read_data;
+    msgs.len = 1;
+    msgs.flags = I2C_MSG_READ | I2C_MSG_STOP;
+    ret = i2c_transfer(i2c_codec, &msgs, 1 , ES8388_ADDR);
+
+
     *p_data = read_data;
     if(ret)
     {
@@ -109,9 +113,10 @@ static int es_read_reg(uint8_t reg_add, uint8_t *p_data)
 
 void es8388_read_all()
 {
-    for (int i = 0; i < 50; i++) {
+    for (int i = 0; i < 0x35; i++) {
         uint8_t reg = 0;
         es_read_reg(i, &reg);
+        LOG_INF("REG :0x%02x - value: 0x%02x", i, reg);
         //ets_printf("%x: %x\n", i, reg);
     }
 }
@@ -189,19 +194,20 @@ int es8388_start(es_module_t mode)
     res = es8388_openbus(&es8388_cfg);
     uint8_t prev_data = 0, data = 0;
     es_read_reg(ES8388_DACCONTROL21, &prev_data);
+    //mode = ES_MODULE_LINE;
     if (mode == ES_MODULE_LINE) {
-        res |= es8388_write_reg(ES8388_DACCONTROL16, 0x09); // 0x00 audio on LIN1&RIN1,  0x09 LIN2&RIN2 by pass enable
+        res |= es8388_write_reg(ES8388_DACCONTROL16, 0x1B); // 0x00 audio on LIN1&RIN1,  0x09 LIN2&RIN2 by pass enable
         res |= es8388_write_reg(ES8388_DACCONTROL17, 0x50); // left DAC to left mixer enable  and  LIN signal to left mixer enable 0db  : bupass enable
         res |= es8388_write_reg(ES8388_DACCONTROL20, 0x50); // right DAC to right mixer enable  and  LIN signal to right mixer enable 0db : bupass enable
         res |= es8388_write_reg(ES8388_DACCONTROL21, 0xC0); //enable adc
     } else {
+        //res |= es8388_write_reg(ES8388_DACCONTROL17, 0x90); // only left DAC to left mixer enable 0db
+        //res |= es8388_write_reg(ES8388_DACCONTROL20, 0x90); // only right DAC to right mixer enable 0db
         res |= es8388_write_reg(ES8388_DACCONTROL21, 0x80);   //enable dac
     }
     es_read_reg(ES8388_DACCONTROL21, &data);
     if (prev_data != data) {
         res |= es8388_write_reg(ES8388_CHIPPOWER, 0xF0);   //start state machine
-        // res |= es8388_write_reg(ES8388_CONTROL1, 0x16);
-        // res |= es8388_write_reg(ES8388_CONTROL2, 0x50);
         res |= es8388_write_reg(ES8388_CHIPPOWER, 0x00);   //start state machine
     }
     if (mode == ES_MODULE_ADC || mode == ES_MODULE_ADC_DAC || mode == ES_MODULE_LINE) {
@@ -210,9 +216,11 @@ int es8388_start(es_module_t mode)
     if (mode == ES_MODULE_DAC || mode == ES_MODULE_ADC_DAC || mode == ES_MODULE_LINE) {
         res |= es8388_write_reg(ES8388_DACPOWER, 0x3c);   //power up dac and line out
         res |= es8388_set_voice_mute(false);
-        LOG_DBG("es8388_start default is mode:%d", mode);
+        LOG_INF("es8388_start default is mode:%d", mode);
     }
-
+    es8388_set_adc_dac_volume(ES_MODULE_ADC_DAC, 0, 0);
+    es8388_set_voice_volume(100);
+    es8388_read_all();
     return res;
 }
 
@@ -247,9 +255,6 @@ int es8388_stop(es_module_t mode)
     }
     if (mode == ES_MODULE_ADC_DAC) {
         res |= es8388_write_reg(ES8388_DACCONTROL21, 0x9C);  //disable mclk
-//        res |= es8388_write_reg(ES8388_CONTROL1, 0x00);
-//        res |= es8388_write_reg(ES8388_CONTROL2, 0x58);
-//        res |= es8388_write_reg(ES8388_CHIPPOWER, 0xF3);  //stop state machine
     }
 
     return res;
@@ -266,7 +271,7 @@ int es8388_stop(es_module_t mode)
  *     - (-1)  Error
  *     - (0)   Success
  */
-int es8388_i2s_config_clock(es_i2s_clock_t cfg)
+int es8388_i2s_config_clock(es8388_i2s_clock_t cfg)
 {
     int res = 0;
     res |= es8388_write_reg(ES8388_MASTERMODE, cfg.sclk_div);
@@ -291,15 +296,16 @@ int es8388_deinit(void)
 int es8388_init(audio_hal_codec_config_t *cfg)
 {
     int res = 0;
+    es8388_openbus(&es8388_cfg);
     res |= es8388_write_reg(ES8388_DACCONTROL3, 0x04);  // 0x04 mute/0x00 unmute&ramp;DAC unmute and  disabled digital volume control soft ramp
     /* Chip Control and Power Management */
     res |= es8388_write_reg(ES8388_CONTROL2, 0x50);
     res |= es8388_write_reg(ES8388_CHIPPOWER, 0x00); //normal all and power up all
 
     // Disable the internal DLL to improve 8K sample rate
-    res |= es8388_write_reg(0x35, 0xA0);
-    res |= es8388_write_reg(0x37, 0xD0);
-    res |= es8388_write_reg(0x39, 0xD0);
+    // res |= es8388_write_reg(0x35, 0xA0);
+    // res |= es8388_write_reg(0x37, 0xD0);
+    // res |= es8388_write_reg(0x39, 0xD0);
 
     res |= es8388_write_reg(ES8388_MASTERMODE, cfg->i2s_iface.mode); //CODEC IN I2S SLAVE MODE
 
@@ -328,6 +334,7 @@ int es8388_init(audio_hal_codec_config_t *cfg)
     } else {
         tmp = DAC_OUTPUT_LOUT1 | DAC_OUTPUT_LOUT2 | DAC_OUTPUT_ROUT1 | DAC_OUTPUT_ROUT2;
     }
+    m_adc_input = tmp;
     res |= es8388_write_reg(ES8388_DACPOWER, tmp);  //0x3c Enable DAC and Enable Lout/Rout/1/2
     /* adc */
     res |= es8388_write_reg(ES8388_ADCPOWER, 0xFF);
@@ -347,10 +354,13 @@ int es8388_init(audio_hal_codec_config_t *cfg)
     //ALC for Microphone
     res |= es8388_set_adc_dac_volume(ES_MODULE_ADC, 0, 0);      // 0db
     res |= es8388_write_reg(ES8388_ADCPOWER, 0x09);    // Power on ADC, enable LIN&RIN, power off MICBIAS, and set int1lp to low power mode
+    // uint8_t val;
+    // res |= es_read_reg(ES8388_DACCONTROL7, &val);
+    // res |= es8388_write_reg(ES8388_DACCONTROL7, val | 0x20);
     
     /* es8388 PA gpio_config */
 
-    es8388_pa_power(true);
+    es8388_pa_power(true); // not implemented yet 
 
     codec_dac_volume_config_t vol_cfg = ES8388_DAC_VOL_CFG_DEFAULT();
     dac_vol_handle = audio_codec_volume_init(&vol_cfg);
@@ -404,7 +414,7 @@ int es8388_set_voice_volume(int volume)
     reg = audio_codec_get_dac_reg_value(dac_vol_handle, volume);
     res |= es8388_write_reg(ES8388_DACCONTROL5, reg);
     res |= es8388_write_reg(ES8388_DACCONTROL4, reg);
-    LOG_DBG("Set volume:%.2d reg_value:0x%.2x dB:%.1f", dac_vol_handle->user_volume, reg,
+    LOG_INF("Set volume:%.2d reg_value:0x%.2x dB:%.1f", dac_vol_handle->user_volume, reg,
             audio_codec_cal_dac_volume(dac_vol_handle));
     return res;
 }
@@ -494,7 +504,7 @@ int es8388_get_voice_mute(void)
  *     - (-1) Parameter error
  *     - (0)   Success
  */
-int es8388_config_dac_output(es_dac_output_t output)
+int es8388_config_dac_output(es8388_dac_output_t output)
 {
     int res;
     uint8_t reg = 0;
@@ -511,7 +521,7 @@ int es8388_config_dac_output(es_dac_output_t output)
  *     - (-1) Parameter error
  *     - (0)   Success
  */
-int es8388_config_adc_input(es_adc_input_t input)
+int es8388_config_adc_input(es8388_adc_input_t input)
 {
     int res;
     uint8_t reg = 0;
@@ -535,6 +545,7 @@ int es8388_set_mic_gain(es8388_mic_gain_t gain)
     //gain_n = (int)gain / 3;
     gain_n = (gain << 4) + gain;
     res = es8388_write_reg(ES8388_ADCCONTROL1, gain_n); //MIC PGA
+    LOG_INF("Set adc gain: %udbm", gain_n);
     return res;
 }
 es8388_mic_gain_t es8388_get_mic_gain()
@@ -543,37 +554,70 @@ es8388_mic_gain_t es8388_get_mic_gain()
     uint8_t gain_n;
     res = es_read_reg(ES8388_ADCCONTROL1, &gain_n);
     gain_n = gain_n & 0x0F;
-    gain_n = gain_n * 3;
     return gain_n;
 }
-
+int es8388_select_input(audio_hal_adc_input_t adc_input)
+{
+    /**/
+    uint8_t tmp = 0;
+    //static uint8_t m_last_adc_input;
+    int ret = 0;
+    //es_read_reg(ES8388_ADCCONTROL2, &tmp);
+    if (AUDIO_HAL_ADC_INPUT_LINE1 == adc_input) {
+        /*In on board case -> Hardware Pesudo - differential mincropphon*/
+        tmp = ADC_INPUT_DIFFERENCE;
+        LOG_INF("ES8388 input ADC line1");
+    } else if (AUDIO_HAL_ADC_INPUT_LINE2 == adc_input) {
+        tmp = ADC_INPUT_LINPUT2_RINPUT2;
+        LOG_INF("ES8388 input ADC line2");
+    } else {
+        tmp = ADC_INPUT_DIFFERENCE;
+    }
+    ret = es8388_write_reg(ES8388_ADCCONTROL2, tmp);  //0x00 LINSEL & RINSEL, LIN1/RIN1 as ADC Input; DSSEL,use one DS Reg11; DSR, LINPUT1-RINPUT1
+    return 0;
+    
+}
+int es8388_select_output(audio_hal_dac_output_t dac_output)
+{
+    int tmp = 0;
+    int ret = 0;
+    if (AUDIO_HAL_DAC_OUTPUT_LINE2 == dac_output) {
+        tmp = DAC_OUTPUT_LOUT1 | DAC_OUTPUT_ROUT1;
+    } else if (AUDIO_HAL_DAC_OUTPUT_LINE1 == dac_output) {
+        tmp = DAC_OUTPUT_LOUT2 | DAC_OUTPUT_ROUT2;
+    } else {
+        tmp = DAC_OUTPUT_LOUT1 | DAC_OUTPUT_LOUT2 | DAC_OUTPUT_ROUT1 | DAC_OUTPUT_ROUT2;
+    }
+    ret |= es8388_write_reg(ES8388_DACPOWER, tmp);  //0x3c Enable DAC and Enable Lout/Rout/1/2
+    return ret;
+}
 int es8388_ctrl_state(audio_hal_codec_mode_t mode, audio_hal_ctrl_t ctrl_state)
 {
     int res = 0;
-    int es_mode_t = 0;
+    int es8388_mode_t = 0;
     switch (mode) {
         case AUDIO_HAL_CODEC_MODE_ENCODE:
-            es_mode_t  = ES_MODULE_ADC;
+            es8388_mode_t  = ES_MODULE_ADC;
             break;
         case AUDIO_HAL_CODEC_MODE_LINE_IN:
-            es_mode_t  = ES_MODULE_LINE;
+            es8388_mode_t  = ES_MODULE_LINE;
             break;
         case AUDIO_HAL_CODEC_MODE_DECODE:
-            es_mode_t  = ES_MODULE_DAC;
+            es8388_mode_t  = ES_MODULE_DAC;
             break;
         case AUDIO_HAL_CODEC_MODE_BOTH:
-            es_mode_t  = ES_MODULE_ADC_DAC;
+            es8388_mode_t  = ES_MODULE_ADC_DAC;
             break;
         default:
-            es_mode_t = ES_MODULE_DAC;
+            es8388_mode_t = ES_MODULE_DAC;
             LOG_WRN("Codec mode not support, default is decode mode");
             break;
     }
     if (AUDIO_HAL_CTRL_STOP == ctrl_state) {
-        res = es8388_stop(es_mode_t);
+        res = es8388_stop(es8388_mode_t);
     } else {
-        res = es8388_start(es_mode_t);
-        LOG_DBG("start default is decode mode:%d", es_mode_t);
+        res = es8388_start(es8388_mode_t);
+        LOG_DBG("start default is decode mode:%d", es8388_mode_t);
     }
     return res;
 }

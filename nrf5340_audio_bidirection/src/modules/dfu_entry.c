@@ -135,10 +135,11 @@ void dfu_entry_check(void)
 	int ret;
 	bool pressed;
 
-	ret = button_pressed(BUTTON_4, &pressed);
-	if (ret) {
-		return;
-	}
+	return;
+	// ret = button_pressed(BUTTON_4, &pressed);
+	// if (ret) {
+	// 	return;
+	// }
 
 	if (pressed) {
 		LOG_INF("Enter SMP_SVR service only status");

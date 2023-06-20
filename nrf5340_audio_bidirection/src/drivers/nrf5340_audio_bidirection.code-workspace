@@ -2,6 +2,14 @@
 	"folders": [
 		{
 			"path": "..\\.."
+		},
+		{
+			"name": "test_kit_walkie",
+			"path": "..\\..\\..\\test_kit_walkie"
+		},
+		{
+			"name": "nrf_desktop",
+			"path": "..\\..\\..\\nrf_desktop"
 		}
 	],
 	"settings": {
@@ -36,7 +44,20 @@
 			"array": "c",
 			"string": "c",
 			"string_view": "c",
-			"es8388.h": "c"
+			"es8388.h": "c",
+			"audio.h": "c",
+			"ble_core.h": "c",
+			"stdint.h": "c",
+			"initializer_list": "c",
+			"toolchain.h": "c",
+			"reboot.h": "c",
+			"pacs.h": "c",
+			"le_audio.h": "c",
+			"hci.h": "c",
+			"ble_hci_vsc.h": "c",
+			"hci_vs.h": "c",
+			"lc3api.h": "c",
+			"nrf_gpio.h": "c"
 		},
 		"nrf-connect.debugging.bindings": {
 			"${workspaceFolder}/build": "Launch build"

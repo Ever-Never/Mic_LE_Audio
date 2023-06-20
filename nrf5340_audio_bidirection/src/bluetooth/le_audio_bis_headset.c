@@ -5,18 +5,19 @@
  */
 
 #include "le_audio.h"
-
+//#include <zephyr/zbus/zbus.h>
 #include <zephyr/bluetooth/bluetooth.h>
 #include <zephyr/bluetooth/audio/audio.h>
 #include <zephyr/bluetooth/audio/pacs.h>
 
 /* TODO: Remove when a get_info function is implemented in host */
 #include <../subsys/bluetooth/audio/endpoint.h>
-
+//#include "nrf5340_audio_common.h"
 #include "macros_common.h"
 #include "ctrl_events.h"
 #include "hw_codec.h"
 #include "channel_assignment.h"
+#include "pair_ultilities.h"
 
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(bis_headset, CONFIG_BLE_LOG_LEVEL);
@@ -109,25 +110,30 @@ static bool bitrate_check(const struct bt_codec *codec)
 	uint32_t octets_per_sdu = bt_codec_cfg_get_octets_per_frame(codec);
 
 	if (octets_per_sdu < LE_AUDIO_SDU_SIZE_OCTETS(CONFIG_LC3_BITRATE_MIN)) {
-		LOG_WRN("Bitrate too low");
+		LOG_WRN("Bitrate too low: %u", octets_per_sdu);
 		return false;
 	} else if (octets_per_sdu > LE_AUDIO_SDU_SIZE_OCTETS(CONFIG_LC3_BITRATE_MAX)) {
-		LOG_WRN("Bitrate too high");
+		LOG_WRN("Bitrate too high: %u", octets_per_sdu);
 		return false;
+	}
+	else
+	{
+		LOG_WRN("Get codec Bitrate %u", octets_per_sdu);
 	}
 
 	return true;
 }
 
-static bool adv_data_parse(struct bt_data *data, void *user_data)
-{
-	if (data->type == BT_DATA_BROADCAST_NAME && data->data_len) {
-		memcpy((char *)user_data, data->data, data->data_len);
-		return false;
-	}
+// static bool adv_data_parse(struct bt_data *data, void *user_data)
+// {
+// 	if (data->type == BT_DATA_BROADCAST_NAME && data->data_len) {
+// 		memcpy((char *)user_data, data->data, data->data_len);
+// 		return false;
+// 	}
 
-	return true;
-}
+// 	return true;
+// }
+
 
 static void stream_started_cb(struct bt_audio_stream *stream)
 {
@@ -171,7 +177,40 @@ static void stream_recv_cb(struct bt_audio_stream *stream, const struct bt_iso_r
 		LOG_DEBUG_BROADCAST("Received %d total ISO packets", recv_cnt);
 	}
 }
-
+/*
+* @brief: Check if this advertising message belong to this network -> ignore if not 
+*/
+//extern bool pair_utilities_get_mac_from_name(char *p_name, uint8_t *p_mac_address);
+//extern uint8_t* pair_ultitities_get_gateway_info();
+static bool scan_check_network_name(struct bt_data *data, void *user_data)
+{
+	bool *p_network_check = (bool*)user_data;
+	static const uint8_t BT_NAME_FIXED_LEN = 20;
+	static bool m_first_time = false;
+	if(data->type != BT_DATA_NAME_COMPLETE)
+	{
+		return true;
+	}
+	if(data->data_len != BT_NAME_FIXED_LEN - 1)
+	{
+		return true;
+	}
+	static uint8_t advertising_address[6];
+	LOG_INF("pair data:%s", data->data);
+	bool ret = pair_utilities_get_mac_from_name(data->data, advertising_address);
+	if(ret)
+	{
+		if(memcmp(advertising_address, pair_ultitities_get_gateway_info(), 6) == 0)
+		{
+			*p_network_check = true;
+		}
+		else
+		{
+			*p_network_check = false;
+		}
+	}
+	return false;
+}
 static struct bt_audio_stream_ops stream_ops = { .started = stream_started_cb,
 						 .stopped = stream_stopped_cb,
 						 .recv = stream_recv_cb };
@@ -179,15 +218,17 @@ static struct bt_audio_stream_ops stream_ops = { .started = stream_started_cb,
 static bool scan_recv_cb(const struct bt_le_scan_recv_info *info, struct net_buf_simple *ad,
 			 uint32_t broadcast_id)
 {
-	char name[64];
-
-	bt_data_parse(ad, adv_data_parse, (void *)name);
-	if (strncmp(name, "LavalierMicrophone", strlen("LavalierMicrophone")) == 0) {
-		LOG_INF("Broadcast source  found:%s", name);
+	//char name[64];
+	bool l_is_same_network = false;
+	bt_data_parse(ad, scan_check_network_name, (void*)&l_is_same_network);
+	if(!l_is_same_network)
+	{
+		return false;
+	}
+	else
+	{
 		return true;
 	}
-
-	return false;
 }
 
 static void scan_term_cb(int err)
@@ -229,18 +270,18 @@ static void pa_sync_lost_cb(struct bt_audio_broadcast_sink *sink)
 		return;
 	}
 	/*No need to restart scan after lost */
-	// if(ble_custom_nus_central_is_in_pair_mode() == true)
-	// {
-	// 	LOG_INF("No need to restart scanning for broadcast sources\r\n");
-	// }
-	// else
-	// {
+	if(ble_custom_nus_central_is_in_pair_mode() == true)
+	{
+		LOG_INF("No need to restart scanning for broadcast sources\r\n");
+	}
+	else
+	{
 		LOG_INF("Restarting scanning for broadcast sources");
 		ret = bt_audio_broadcast_sink_scan_start(BT_LE_SCAN_PASSIVE);
 		if (ret) {
 			LOG_ERR("Unable to start scanning for broadcast sources");
 		}
-	//}
+	}
 }
 
 static void base_recv_cb(struct bt_audio_broadcast_sink *sink, const struct bt_audio_base *base)
@@ -309,11 +350,15 @@ static void base_recv_cb(struct bt_audio_broadcast_sink *sink, const struct bt_a
 static void syncable_cb(struct bt_audio_broadcast_sink *sink, bool encrypted)
 {
 	int ret;
-
-	if (active_audio_stream.stream->ep->status.state == BT_AUDIO_EP_STATE_STREAMING ||
-	    !playing_state) {
-		LOG_DEBUG_BROADCAST("Syncable received, but either in paused_state or already in a stream");
-		return;
+	/*This refers to https://devzone.nordicsemi.com/f/nordic-q-a/96965/nrf5340-audio-application-null-pointer-dereference
+	This could lead to derefernce null pointer
+	*/
+	if (active_audio_stream.stream->ep != NULL) {
+		if (active_audio_stream.stream->ep->status.state == BT_AUDIO_EP_STATE_STREAMING ||
+			!playing_state) {
+			LOG_DEBUG_BROADCAST("Syncable received, but either in paused_state or already in a stream");
+			return;
+		}
 	}
 
 	if (encrypted) {

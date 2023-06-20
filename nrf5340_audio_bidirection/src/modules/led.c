@@ -350,6 +350,5 @@ void app_led_indicator_stop_streaming()
 /*Indicate device is powered*/
 void app_led_turn_on_device()
 {
-	//led_on(LED_POWER, 10);
 	led_on(LED_POWER, LED_ON_FOREVER);
 }

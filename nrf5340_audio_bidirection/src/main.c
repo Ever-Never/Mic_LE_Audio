@@ -29,6 +29,11 @@
 #include "battery_measurement.h"
 #include "ble_custom_nus_central.h"
 #include "debug/cpu_load.h"
+#include "ble_hci_vsc.h"
+//#include <bluetooth/hci_vs.h>
+#include <zephyr/bluetooth/hci.h>
+#include <zephyr/bluetooth/hci_vs.h>
+#include "app_wdt.h"
 #if defined(CONFIG_AUDIO_DFU_ENABLE)
 #include "dfu_entry.h"
 #endif
@@ -134,31 +139,34 @@ void main(void)
 	ret = hfclock_config_and_start();
 	ERR_CHK(ret);
 
-	ret = led_init();
+	ret = app_wdt_enable();
 	ERR_CHK(ret);
-	app_led_turn_on_device();
-	led_on(LED_POWER, 10);
 
-	// ret = fw_info_app_print();
-	// ERR_CHK(ret);
 	ret = button_handler_init();
-	ERR_CHK(ret);
-
-	channel_assignment_init();
-
-	ret = channel_assign_check();
 	ERR_CHK(ret);
 
 	ret = hw_output_init();
 	ERR_CHK(ret);
 	hw_output_set_level(GPIO_ON_OFF_CTRL, 1);
+
+	ret = fw_info_app_print();
+	ERR_CHK(ret);
+	channel_assignment_init();
+
+	ret = channel_assign_check();
+	ERR_CHK(ret);
+
+	ret = led_init();
+	ERR_CHK(ret);
+    app_led_turn_on_device();
+	led_on(LED_POWER, 10);
 	
 	ret = battery_measurement_init();
 	ERR_CHK(ret);
-#if defined(CONFIG_AUDIO_DFU_ENABLE)
-	/* Check DFU BTN before Initialize BLE */
-	dfu_entry_check();
-#endif
+// #if defined(CONFIG_AUDIO_DFU_ENABLE)
+// 	/* Check DFU BTN before Initialize BLE */
+// 	dfu_entry_check();
+// #endif
 
 	/* Initialize BLE, with callback for when BLE is ready */
 	ret = ble_core_init(on_ble_core_ready);
@@ -172,16 +180,19 @@ void main(void)
 	/*Init Nus custom for pairing feature*/
 	ultilities_load_mac(); // load device mac address
 	pair_ultilities_flash_init();
+	
 #if(CONFIG_AUDIO_DEV == 2 && IS_ENABLED(CONFIG_TRANSPORT_BIS))
 	ble_custom_nus_init();
 	pair_ultitlities_set_device_name(CONFIG_BT_DEVICE_NAME);
+	
+	//ble_hci_vsc_set_adv_tx_pwr();
 #elif(CONFIG_AUDIO_DEV == 1 && IS_ENABLED(CONFIG_TRANSPORT_BIS))
 	ble_custom_nus_central_init();
 	pair_ultilities_flash_init();
 	uint8_t gw_if[6];
 	if(pair_ultilities_flash_read_gateway_info(gw_if) == 0)
 	{
-		LOG_HEXDUMP_INF(gw_if, sizeof(gw_if), 6);
+		LOG_HEXDUMP_INF(gw_if, sizeof(gw_if), "Gw: info");
 	}
 	else 
 	{
@@ -192,6 +203,11 @@ void main(void)
 	audio_system_init();
 
 	ret = streamctrl_start();
+	ble_hci_vsc_set_radio_high_pwr_mode(false);
+	ble_hci_vsc_set_adv_tx_pwr(BLE_HCI_VSC_TX_PWR_Neg40dBm);
+	
+	ble_hci_vsc_set_pri_ext_adv_max_tx_pwr(BLE_HCI_VSC_TX_PWR_Neg40dBm);
+
 	cpu_load_init();
 	while (1) {
 		streamctrl_event_handler();

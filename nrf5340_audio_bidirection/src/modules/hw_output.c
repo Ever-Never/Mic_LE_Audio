@@ -9,7 +9,7 @@
 #include <stdbool.h>
 #include "hw_output.h"
 #include "macros_common.h"
-
+#include "led.h"
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(hw_output, 3);
 
@@ -54,10 +54,11 @@ int hw_output_set_level(gpio_output_t output_pin, int level)
     }
     return ret;
 }
+
 void hw_output_button_handle()
 {
     //bool on_off_status = false;
-    static bool m_is_first_time = false;
+    static bool m_is_first_time = true;
     /*First time pressed -> onl*/
     if(m_is_first_time)
     {
@@ -70,6 +71,7 @@ void hw_output_button_handle()
         m_is_first_time = true;
         LOG_INF("Set status to ON");
         hw_output_set_level(GPIO_ON_OFF_CTRL, true);
+
     }
 }
 bool hw_output_get_level(gpio_output_t output_pin)

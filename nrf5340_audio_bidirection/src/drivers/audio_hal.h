@@ -73,7 +73,7 @@ typedef enum {
     MCLK_DIV_13 = 30,
     MCLK_DIV_14 = 31,
     MCLK_DIV_MAX,
-} es_sclk_div_t;
+} es8388_sclk_div_t;
 
 typedef enum {
     LCLK_DIV_MIN = -1,
@@ -104,14 +104,14 @@ typedef enum {
     LCLK_DIV_1496 = 26,
     LCLK_DIV_1500 = 27,
     LCLK_DIV_MAX,
-} es_lclk_div_t;
+} es8388_lclk_div_t;
 
 typedef enum {
     D2SE_PGA_GAIN_MIN = -1,
     D2SE_PGA_GAIN_DIS = 0,
     D2SE_PGA_GAIN_EN = 1,
     D2SE_PGA_GAIN_MAX = 2,
-} es_d2se_pga_t;
+} es8388_d2se_pga_t;
 
 typedef enum {
     ADC_INPUT_MIN = -1,
@@ -121,7 +121,7 @@ typedef enum {
     ADC_INPUT_LINPUT2_RINPUT2 = 0x50,
     ADC_INPUT_DIFFERENCE = 0xf0,
     ADC_INPUT_MAX,
-} es_adc_input_t;
+} es8388_adc_input_t;
 
 typedef enum {
     DAC_OUTPUT_MIN = -1,
@@ -132,10 +132,7 @@ typedef enum {
     DAC_OUTPUT_ROUT2 = 0x20,
     DAC_OUTPUT_ALL = 0x3c,
     DAC_OUTPUT_MAX,
-} es_dac_output_t;
-
-
-
+} es8388_dac_output_t;
 typedef enum {
     ES_MODULE_MIN = -1,
     ES_MODULE_ADC = 0x01,
@@ -150,7 +147,7 @@ typedef enum {
     ES_MODE_SLAVE = 0x00,
     ES_MODE_MASTER = 0x01,
     ES_MODE_MAX,
-} es_mode_t;
+} es8388_mode_t;
 
 typedef enum {
     ES_I2S_MIN = -1,
@@ -165,17 +162,13 @@ typedef enum {
  * @brief Configure ES8388 clock
  */
 typedef struct {
-    es_sclk_div_t sclk_div;    /*!< bits clock divide */
-    es_lclk_div_t lclk_div;    /*!< WS clock divide */
-} es_i2s_clock_t;
+    es8388_sclk_div_t sclk_div;    /*!< bits clock divide */
+    es8388_lclk_div_t lclk_div;    /*!< WS clock divide */
+} es8388_i2s_clock_t;
 
 #ifdef __cplusplus
 }
 #endif
-
-
-
-
 
 typedef struct
 {
@@ -200,6 +193,7 @@ typedef enum {
     AUDIO_HAL_ADC_INPUT_LINE2,         /*!< mic input to adc channel 2 */
     AUDIO_HAL_ADC_INPUT_ALL,           /*!< mic input to both channels of adc */
     AUDIO_HAL_ADC_INPUT_DIFFERENCE,    /*!< mic input to adc difference channel */
+    AUDIO_HAL_ADC_INVALID 
 } audio_hal_adc_input_t;
 
 /**

@@ -21,7 +21,7 @@
 #include "cs47l63_comm.h"
 #include "es8311.h"
 #include "es8388.h"
-
+#include "button_handler.h"
 #include <zephyr/logging/log.h>
 LOG_MODULE_REGISTER(hw_codec, CONFIG_MODULE_HW_CODEC_LOG_LEVEL);
 
@@ -30,13 +30,14 @@ LOG_MODULE_REGISTER(hw_codec, CONFIG_MODULE_HW_CODEC_LOG_LEVEL);
 #define AUDIO_HAL_VOL_DEFAULT 30
 #define BASE_10 10
 
-
+#define VOLUME_DECREMENT_STEP	4
+#define VOLUME_INCREMENT_STEP	4
 static codec_dac_volume_config_t m_dac_volume_handle;
 
 
 #define AUDIO_CODEC_DEFAULT_CONFIG(){                   \
         .adc_input  = AUDIO_HAL_ADC_INPUT_LINE1,        \
-        .dac_output = AUDIO_HAL_DAC_OUTPUT_ALL,         \
+        .dac_output = AUDIO_HAL_DAC_OUTPUT_LINE1,         \
         .codec_mode = AUDIO_HAL_CODEC_MODE_BOTH,        \
         .i2s_iface = {                                  \
             .mode = AUDIO_HAL_MODE_SLAVE,               \
@@ -89,14 +90,14 @@ static const struct gpio_dt_spec mic_shutdown = GPIO_DT_SPEC_GET(MIC_SHUTDOWN_NO
 
 static const int es8311_mic_gain[] =
 {
-    ES8311_MIC_GAIN_0DB,
+    ES8311_MIC_GAIN_0DB, 
     ES8311_MIC_GAIN_6DB,
     ES8311_MIC_GAIN_12DB,
     ES8311_MIC_GAIN_18DB,
     ES8311_MIC_GAIN_24DB,
     ES8311_MIC_GAIN_30DB,
     ES8311_MIC_GAIN_36DB,
-    ES8311_MIC_GAIN_42DB,
+    ES8311_MIC_GAIN_42DB
 };
 static const int es8388_mic_gain[] = 
 {
@@ -115,8 +116,9 @@ static const int es8388_mic_gain[] =
 static int get_codec_mic_volume(uint8_t volume_percent)
 {
 	int ret_mic_gain = 0;
-	volume_percent = volume_percent / 10;
+	
 #if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
+	volume_percent = volume_percent / ARRAY_SIZE(es8311_mic_gain);
 	if(volume_percent >= ES8311_MIC_GAIN_SIZE - 1)
 	{
 		ret_mic_gain = es8311_mic_gain[ES8311_MIC_GAIN_SIZE - 1];
@@ -129,10 +131,11 @@ static int get_codec_mic_volume(uint8_t volume_percent)
 	{
 		ret_mic_gain = es8311_mic_gain[volume_percent];
 	}
-#elif
-	if(volume_percent >= ES8388_MIC_GAIN_SIZE - 1)
+#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+	volume_percent = volume_percent / ARRAY_SIZE(es8388_mic_gain);
+	if(volume_percent >= ARRAY_SIZE(es8388_mic_gain) - 1)
 	{
-		ret_mic_gain = es8388_mic_gain[ES8388_MIC_GAIN_SIZE - 1];
+		ret_mic_gain = es8388_mic_gain[ARRAY_SIZE(es8388_mic_gain) - 1];
 	}
 	else if(volume_percent <= 0)
 	{
@@ -169,15 +172,13 @@ int hw_codec_volume_set(uint8_t set_val)
 			return ret;
 		}
 	}
-
-#else
-	//get_codec_mic_volume(set_val);
+#elif(CONFIG_AUDIO_DEV == GATEWAY)
 #if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
 	es8311_mic_gain_t gain = get_codec_mic_volume(set_val);
 	ret = es8311_set_mic_gain(gain);
 #elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
-	es8388_mic_gain_t = get_codec_mic_volume(set_val);
-	ret = es8388_set_mic_gain(set_val)
+	es8388_mic_gain_t gain = get_codec_mic_volume(set_val);
+	ret = es8388_set_mic_gain(set_val);
 #endif
 	if(ret)
 	{
@@ -191,10 +192,10 @@ int hw_codec_volume_set(uint8_t set_val)
 #endif
 	if(read_back != gain)
 	{
+		LOG_ERR("Set codec volume failed:%d\r\n", ret);
 		return -1;
 	}
 #endif
-	LOG_ERR("Set codec volume failed:%d\r\n", ret);
 	return ret;
 }
 
@@ -211,12 +212,12 @@ int hw_codec_volume_decrease(void)
 	int l_current_volume = 0;
 #if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
 	ret = es8311_codec_get_voice_volume(&l_current_volume);
-#elif(#if(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
 	ret = es8388_get_voice_volume(&l_current_volume);
 #endif
 	if(ret == 0)
 	{
-		l_current_volume = l_current_volume - 4;
+		l_current_volume = l_current_volume - VOLUME_DECREMENT_STEP;
 	}
 	else
 	{
@@ -255,6 +256,7 @@ int hw_codec_volume_decrease(void)
 #elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
 	ret = es8388_set_mic_gain(current_gain);
 #endif
+	LOG_INF("Decrease mic gain to level:%u", current_gain);
 	if(ret)
 	{
 		LOG_ERR("Fail to set mic gain");
@@ -266,17 +268,17 @@ int hw_codec_volume_decrease(void)
 
 int hw_codec_volume_increase(void)
 {
-	int ret;
+	int ret = 0;
 #if(CONFIG_AUDIO_DEV == HEADSET)
 	int l_current_volume = 0;
-#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
-	ret = es8311_codec_get_voice_volume(&l_current_volume);
-#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
-	ret = es8388_get_voice_volume(&l_current_volume);
-#endif
+	#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
+		ret = es8311_codec_get_voice_volume(&l_current_volume);
+	#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+		ret = es8388_get_voice_volume(&l_current_volume);
+	#endif
 	if(ret == 0)
 	{
-		l_current_volume = l_current_volume + 4;
+		l_current_volume = l_current_volume + VOLUME_INCREMENT_STEP;
 	}
 	else
 	{
@@ -291,8 +293,10 @@ int hw_codec_volume_increase(void)
 	{
 #if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
 		ret = es8311_codec_set_voice_volume(l_current_volume);
+
 #elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
 		ret = es8388_set_voice_volume(l_current_volume);
+
 #endif
 		if(ret == 0)
 		{
@@ -300,20 +304,30 @@ int hw_codec_volume_increase(void)
 		}
 	}
 #else
-	es8311_mic_gain_t current_gain = es8311_get_mic_gain();
+	#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
+		es8311_mic_gain_t current_gain = es8311_get_mic_gain();
+	#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+		es8388_mic_gain_t current_gain = es8388_get_mic_gain();
+	#endif
 	current_gain++;
-
 #if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
 	if(current_gain >= ES8311_MIC_GAIN_42DB)
 	{
 		current_gain = ES8311_MIC_GAIN_42DB;
 	}
-	ret = es8311_set_mic_gain(current_gain);
+
 #elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+	
 	if(current_gain >= MIC_GAIN_24DB)
 	{
 		current_gain = MIC_GAIN_24DB;
 	}
+#if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
+	ret = es8311_set_mic_gain(current_gain);
+#elif(CONFIG_AUDIO_HARDWARE_CODEC == 2)
+	ret = es8388_set_mic_gain(current_gain);
+#endif
+	LOG_INF("Increase mic gain to level:%u", current_gain);
 #endif
 	if(ret)
 	{
@@ -321,7 +335,7 @@ int hw_codec_volume_increase(void)
 		return ret;
 	}
 #endif
-	return 0;
+	return ret;
 }
 
 int hw_codec_volume_mute(void)
@@ -372,7 +386,13 @@ int hw_codec_init(void)
 	}
 	ret = gpio_pin_configure_dt(&mic_shutdown, GPIO_OUTPUT_LOW);
 	LOG_INF("Mic shut down state: %d\r\n", gpio_pin_get_dt(&mic_shutdown));
-	static audio_hal_codec_config_t audio_config = AUDIO_CODEC_DEFAULT_CONFIG();
+	audio_hal_codec_config_t audio_config = AUDIO_CODEC_DEFAULT_CONFIG(); 
+#if(CONFIG_AUDIO_DEV == GATEWAY)
+	audio_config.codec_mode = AUDIO_HAL_CODEC_MODE_ENCODE;
+#else(CONFIG_AUDIO_DEV == HEADSET)
+	audio_config.codec_mode = AUDIO_HAL_CODEC_MODE_DECODE;
+#endif
+	//audio_config.adc_input = AUDIO_HAL_ADC_INPUT_LINE2;
 	/*Config the codec*/
 #if(CONFIG_AUDIO_HARDWARE_CODEC == 1)
 	ret = es8311_init(&audio_config);
@@ -389,16 +409,45 @@ int hw_codec_init(void)
 	}
 	// /*set default volume*/
 	es8388_config_i2s(audio_config.codec_mode, &audio_config.i2s_iface);
-	es8388_ctrl_state(AUDIO_HAL_CODEC_MODE_BOTH, AUDIO_HAL_CTRL_START);
+	es8388_ctrl_state(audio_config.codec_mode, AUDIO_HAL_CTRL_START);
+
 #endif
 #if(CONFIG_AUDIO_DEV == HEADSET)
 	hw_codec_volume_set(100); /*Set out put volume if device is slave*/
 #elif(CONFIG_AUDIO_DEV == GATEWAY)
-	hw_codec_volume_set(0); /*Set input volume if device is master*/
+	hw_codec_volume_set(100); /*Set input volume if device is master*/
 #endif
+	if(app_button_read_detect_mic())
+	{
+		hw_codec_set_input(1);
+	}
+	else
+	{
+		hw_codec_set_input(0);
+	}
 	return 0;
 }
+/*Only for es8388*/
+int hw_codec_set_input(bool line_true)
+{
+	audio_hal_adc_input_t input;
+	if(line_true) 
+	{
+		LOG_INF("Using line in -> Change mic MicAmp to 6dbm");
+		input = AUDIO_HAL_ADC_INPUT_LINE2;
+		/*
+			@brief: If user choose to use line in -> Input voltage will much more higher than using on board mic
+					-> Unexpecting 
+		*/
+		es8388_set_mic_gain(MIC_GAIN_6DB);
 
+	}
+	else 
+	{
+		input = AUDIO_HAL_ADC_INPUT_LINE1;
+	}
+	return es8388_select_input(input);
+}
 static int cmd_input(const struct shell *shell, size_t argc, char **argv)
 {
 	int ret;
@@ -458,9 +507,6 @@ static int cmd_input(const struct shell *shell, size_t argc, char **argv)
 
 	return 0;
 }
-
-
-
 volume_handle_t audio_codec_volume_init(codec_dac_volume_config_t *config)
 {
 	if(config == NULL)

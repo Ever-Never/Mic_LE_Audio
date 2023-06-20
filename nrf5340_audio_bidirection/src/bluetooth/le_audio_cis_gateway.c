@@ -386,6 +386,7 @@ static void stream_stopped_cb(struct bt_audio_stream *stream)
 	uint8_t channel_index;
 
 	LOG_INF("Stream %p stopped", (void *)stream);
+	//sys_reboot(SYS_REBOOT_WARM);
 
 	ret = channel_index_get(NULL, stream, &channel_index);
 	if (ret) {
@@ -697,13 +698,11 @@ static void ad_parse(struct net_buf_simple *p_ad, const bt_addr_le_t *addr)
 			LOG_WRN("AD malformed");
 			return;
 		}
-
 		type = net_buf_simple_pull_u8(p_ad);
 
 		if (device_found(type, p_ad->data, len - 1, addr) == 0) {
 			return;
 		}
-
 		(void)net_buf_simple_pull(p_ad, len - 1);
 	}
 }
@@ -714,11 +713,11 @@ static void user_parser_advertising_data(struct net_buf_simple *p_ad, const bt_a
 	uint8_t len = 0;
 	uint8_t type = 0;
 	uint8_t total_read = 0;
-	LOG_DBG("Packet length: %u\r\n", temp_ad.len);
-	if(temp_ad.len == 64)
-	{
-		LOG_DBG("Get go debug adv packet\r\n");
-	}
+	//LOG_DBG("Packet length: %u\r\n", temp_ad.len);
+	// if(temp_ad.len == 64)
+	// {
+	// 	//LOG_DBG("Get go debug adv packet\r\n");
+	// }
 	while(total_read <= temp_ad.len)
 	{
 		/*Search for manufacture specific data*/
@@ -726,8 +725,6 @@ static void user_parser_advertising_data(struct net_buf_simple *p_ad, const bt_a
 		type = p_ad->data[total_read + 1];
 		p_data = &p_ad->data[total_read + 2];
 		total_read = total_read + len + 1;
-		//LOG_HEXDUMP_WRN(p_data[total_read + 2], "DEBUG");
-		LOG_HEXDUMP_DBG(p_data[total_read+2], len,  "DEBUG_RAW");
 		/*0xFF is Manufacture specific data type*/
 		if(type != BT_DATA_MANUFACTURER_DATA){
 			continue;
@@ -738,7 +735,6 @@ static void user_parser_advertising_data(struct net_buf_simple *p_ad, const bt_a
 		   p_data_adv->refined.manufacture_id == 0x1234ABCD && 
 		   strcmp(p_data_adv->refined.p_manufacture_data, "LavalierMicrophone") == 0)
 		{
-			LOG_INF("Found pair device\r\n");
 			/*create connection*/
 			int ret;
 			struct bt_conn *conn;
@@ -761,9 +757,6 @@ static void user_parser_advertising_data(struct net_buf_simple *p_ad, const bt_a
 		}
 		else
 		{
-			LOG_DBG("Device type:%d - Manufacture ID: %08x - p_manufacture_data:%s\r\n", p_data_adv->refined.device_type
-																					, p_data_adv->refined.manufacture_id  
-																					, p_data_adv->refined.p_manufacture_data);
 			return;
 		}
 	}
@@ -773,9 +766,9 @@ static void on_device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 			    struct net_buf_simple *p_ad)
 {
 	/* Direct advertising has no payload, so no need to parse */
-	LOG_DBG("[on_device_found]: RSSI = %d\r\n", rssi);
-	LOG_HEXDUMP_DBG(addr->a.val, 6, "MAC address:");
-	LOG_HEXDUMP_DBG(p_ad->data, p_ad->len, "Data:");
+	// LOG_DBG("[on_device_found]: RSSI = %d\r\n", rssi);
+	// LOG_HEXDUMP_DBG(addr->a.val, 6, "MAC address:");
+	// LOG_HEXDUMP_DBG(p_ad->data, p_ad->len, "Data:");
 	if (type == BT_GAP_ADV_TYPE_ADV_DIRECT_IND) {
 	 	if (bonded_num) {
 	 		bt_foreach_bond(BT_ID_DEFAULT, bond_connect, (void *)addr);
@@ -784,7 +777,7 @@ static void on_device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
 	 } else if (type == BT_GAP_ADV_TYPE_ADV_IND || type == BT_GAP_ADV_TYPE_EXT_ADV) {
 		/* Note: May lead to connection creation */
 		ad_parse(p_ad, addr);
-		user_parser_advertising_data(p_ad, addr);
+		//user_parser_advertising_data(p_ad, addr);
 	}
 }
 

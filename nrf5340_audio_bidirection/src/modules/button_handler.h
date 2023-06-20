@@ -80,4 +80,13 @@ int button_handler_init(void);
  */
 int button_pressed(gpio_pin_t button_pin, bool *button_pressed);
 
+/** @brief Read the current state of mic detect pin
+ * @return 0 if mic is detected, 1 mic is empty
+ */
+bool app_button_read_detect_mic(void);
+/** @brief Read the current state of mic detect pin
+ * @return 0 if mic is detected, 1 mic is empty
+ */
+bool app_button_read_onoff(void);
+
 #endif /* _BUTTON_HANDLER_H_ */

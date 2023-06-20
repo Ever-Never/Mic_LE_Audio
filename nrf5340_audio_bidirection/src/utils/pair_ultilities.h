@@ -52,4 +52,6 @@ uint8_t pair_ultilities_flash_read_volume_cfg(uint8_t *volume_config);
 uint8_t* pair_ultitities_get_gateway_info();
 
 void pair_ultitlities_set_device_name(char* P_pre_name);
+
+uint32_t GetHexNumberFromString(uint16_t BeginAddress, char* Buffer , uint32_t len);
 #endif

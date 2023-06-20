@@ -74,11 +74,11 @@ static uint8_t m_gateway_info[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
  * @version	:
  * @reviewer:	
  */
-uint32_t GetHexNumberFromString(uint16_t BeginAddress, char* Buffer)
+uint32_t GetHexNumberFromString(uint16_t BeginAddress, char* Buffer , uint32_t len)
 {
     uint32_t Value = 0;
     uint16_t tmpCount = 0;
-
+    uint32_t current_len = 0;
     tmpCount = BeginAddress;
     Value = 0;
     while(Buffer[tmpCount] && tmpCount < 1024)
@@ -103,6 +103,13 @@ uint32_t GetHexNumberFromString(uint16_t BeginAddress, char* Buffer)
             if(Buffer[tmpCount] == 'D' || Buffer[tmpCount] == 'd') Value += 13;
             if(Buffer[tmpCount] == 'E' || Buffer[tmpCount] == 'e') Value += 14;
             if(Buffer[tmpCount] == 'F' || Buffer[tmpCount] == 'f') Value += 15;
+            if(len)
+            {
+                if(++current_len >= len)
+                {
+                    break;
+                }
+            }
         }
         else break;
 
@@ -251,28 +258,30 @@ uint32_t GetNumberFromString(uint16_t BeginAddress, char* Buffer)
 
 bool pair_utilities_get_mac_from_name(char *p_name, uint8_t *p_mac_address)
 {
-    char *p_temp = strstr(p_name, "LavalierMicro");
-    if(p_temp == 0)
-    {
-        return false;
-    }
-    p_temp = strstr(p_name, "-");
+    
+    char *p_temp = strstr(p_name, "MICBLE");
     if(p_temp == NULL)
     {
         return false;
     }
+    p_temp = strstr(p_name, " ");
+    if(p_temp == NULL)
+    {
+        return false;
+    }
+    p_temp = p_temp + 1;
     //Device name: LavalierMicro-12:34:56:78:9A:BC
-    p_mac_address[0] = GetHexNumberFromString(1, p_temp);
-    p_temp = p_temp + 4;
-    p_mac_address[1] = GetHexNumberFromString(0, p_temp);
-    p_temp = p_temp + 3;
-    p_mac_address[2] = GetHexNumberFromString(0, p_temp);
-    p_temp = p_temp + 3;
-    p_mac_address[3] = GetHexNumberFromString(0, p_temp);
-    p_temp = p_temp + 3;
-    p_mac_address[4] = GetHexNumberFromString(0, p_temp);
-    p_temp = p_temp + 3;
-    p_mac_address[5] = GetHexNumberFromString(0, p_temp);
+    p_mac_address[0] = GetHexNumberFromString(0, p_temp, 2);
+    p_temp = p_temp + 2;
+    p_mac_address[1] = GetHexNumberFromString(0, p_temp, 2);
+    p_temp = p_temp + 2;
+    p_mac_address[2] = GetHexNumberFromString(0, p_temp, 2);
+    p_temp = p_temp + 2;
+    p_mac_address[3] = GetHexNumberFromString(0, p_temp, 2);
+    p_temp = p_temp + 2;
+    p_mac_address[4] = GetHexNumberFromString(0, p_temp, 2);
+    p_temp = p_temp + 2;
+    p_mac_address[5] = GetHexNumberFromString(0, p_temp, 2);
     //p_temp = p_temp + 3;
     return true;
 }
