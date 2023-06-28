@@ -258,7 +258,10 @@ static void connected(struct bt_conn *conn, uint8_t conn_err)
 	{
 		LOG_INF("Set security success\r\n");
 	}
-
+	err = bt_scan_stop();
+	if ((!err) && (err != -EALREADY)) {
+		LOG_ERR("Stop LE scan failed (err %d)", err);
+	}
 	/*send pair message in hear*/
 
 }
@@ -276,7 +279,10 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 
 	bt_conn_unref(default_conn);
 	default_conn = NULL;
-	ble_custome_nus_central_stop_find_pair_device();
+	/*ble_custome_nus_central_stop_find_pair_device();*/
+	struct nus_central_event evt;
+	evt.event = NUS_CENTRAL_EVENT_PAIR_TIMEOUT;
+	ble_custom_nus_central_dispatch_evt(evt);
 }
 static uint8_t ble_data_received(struct bt_nus_client *nus, const uint8_t *data, uint16_t len)
 {
@@ -303,7 +309,8 @@ static uint8_t ble_data_received(struct bt_nus_client *nus, const uint8_t *data,
 		LOG_WRN("Invalid Token\r\n");
 		return BT_GATT_ITER_CONTINUE;
 	}
-	pair_ultilities_flash_save_gateway_info(pair_reponse.gateway_mac);
+	//pair_ultilities_flash_save_gateway_info(pair_reponse.gateway_mac);
+	pair_ultilities_gateway_pair_write(pair_reponse.gateway_mac, pair_reponse.device_type);
 	k_timer_stop(&central_pair_timer);
 	if(default_conn)
 	{
@@ -317,10 +324,19 @@ static uint8_t ble_data_received(struct bt_nus_client *nus, const uint8_t *data,
 		LOG_ERR("Scanning error to stop (err :%d)\r\n", err);
 		return err;
 	}
-	err = bt_bap_broadcast_sink_scan_start(BT_LE_SCAN_PASSIVE);
-	if (err) {
-			LOG_ERR("%s - Unable to start scanning for broadcast sources", __FUNCTION__);
-	}
+
+	struct nus_central_event event;
+	event.event = NUS_CENTRAL_EVENT_PAIR_SUCCESS;
+	ble_custom_nus_central_dispatch_evt(event);
+	// err = k_msgq_put(&pair_to_queue, (void *)&event, K_NO_WAIT);
+	// if(err == -EAGAIN)
+	// {
+	// 	LOG_WRN("Pair NUS central event full");
+	// }
+	// err = bt_bap_broadcast_sink_scan_start(BT_LE_SCAN_PASSIVE);
+	// if (err) {
+	// 		LOG_ERR("%s - Unable to start scanning for broadcast sources", __FUNCTION__);
+	// }
 	return BT_GATT_ITER_CONTINUE;
 }
 
@@ -433,7 +449,7 @@ int ble_custom_nus_central_start_find_pair_device(ble_custom_nus_fair_done_callb
 	if(m_device_is_in_pair_mode == false)
 	{
 		m_device_is_in_pair_mode = true;
-		err = le_audio_disable();
+		//err = le_audio_disable();
 		if(err)
 		{	
 			LOG_ERR("LE Audio disable failed: %d", err);
@@ -448,7 +464,7 @@ int ble_custom_nus_central_start_find_pair_device(ble_custom_nus_fair_done_callb
 			LOG_INF("Turn on scan filter");
 		}
 		k_timer_start(&central_pair_timer, K_SECONDS(20), K_NO_WAIT);
-		m_pair_done_callback = p_pair_done_callback;
+		//m_pair_done_callback = p_pair_done_callback;
 		LOG_INF("Starting NUS pairing central\n");
 		err = bt_scan_start(BT_SCAN_TYPE_SCAN_ACTIVE);
 		if (err) {
@@ -456,7 +472,10 @@ int ble_custom_nus_central_start_find_pair_device(ble_custom_nus_fair_done_callb
 			return err;
 		}
 		LOG_INF("Scanning for pair device");
-		
+		// struct nus_central_event event;
+		// event.event = NUS_CENTRAL_EVENT_PAIR_START; /*Variable name sound dump :))*/
+		// ble_custom_nus_central_dispatch_evt(event);
+
 	}
 	else
 	{
@@ -465,17 +484,27 @@ int ble_custom_nus_central_start_find_pair_device(ble_custom_nus_fair_done_callb
 	}
 	return err;
 }
+
+int ble_custom_nus_central_dispatch_evt(struct nus_central_event evt)
+{
+	int err = 0;
+	err = k_msgq_put(&pair_to_queue, (void *)&evt, K_NO_WAIT);
+	if(err == -EAGAIN)
+	{
+		LOG_WRN("Btn msg queue full");
+	}
+}
 void ble_custome_nus_central_stop_find_pair_device()
 {
 	int err = 0;
 	if(m_device_is_in_pair_mode == true)
 	{
 		
-		if(m_pair_done_callback)
-		{
-			m_pair_done_callback(NULL);
-			m_pair_done_callback = NULL;
-		}
+		// if(m_pair_done_callback)
+		// {
+		// 	m_pair_done_callback(NULL);
+		// 	m_pair_done_callback = NULL;
+		// }
 		//err = bt_scan_stop();
 		scan_deinit();
 		if(err)
@@ -489,10 +518,11 @@ void ble_custome_nus_central_stop_find_pair_device()
 			bt_conn_disconnect(default_conn, BT_HCI_ERR_REMOTE_USER_TERM_CONN);
 		}
 		m_device_is_in_pair_mode = false;
-		int8_t ret = bt_bap_broadcast_sink_scan_start(BT_LE_SCAN_PASSIVE);
-		if (ret) {
-			LOG_ERR("Unable to start scanning for broadcast sources");
-		}
+		//int8_t ret = ble_start_scan_vaid_broadcast_source();
+		// int8_t ret = bt_bap_broadcast_sink_scan_start(BT_LE_SCAN_PASSIVE);
+		// if (ret) {
+		// 	LOG_ERR("Unable to start scanning for broadcast sources");
+		// }
 	}
 	else 
 	{

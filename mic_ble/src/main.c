@@ -66,6 +66,9 @@ ZBUS_OBS_DECLARE(pair_peripheral_sub);
 #elif(CONFIG_AUDIO_DEV == HEADSET)
 ZBUS_CHAN_DECLARE(pair_central_to_channel);
 ZBUS_OBS_DECLARE(pair_central_sub);
+
+ZBUS_CHAN_DECLARE(audio_state_channel);
+ZBUS_OBS_DECLARE(audio_state_sub);
 #endif
 static int hfclock_config_and_start(void)
 {
@@ -159,6 +162,9 @@ int main(void)
 #elif(CONFIG_AUDIO_DEV == HEADSET)
 		ret = zbus_chan_add_obs(&pair_central_to_channel, &pair_central_sub, K_MSEC(200));
 		ERR_CHK(ret);
+
+		ret = zbus_chan_add_obs(&audio_state_channel, &audio_state_sub, K_MSEC(200));
+		ERR_CHK(ret);
 #endif
 	}
 
@@ -222,15 +228,21 @@ int main(void)
 	//ble_hci_vsc_set_adv_tx_pwr();
 #elif(CONFIG_AUDIO_DEV == 1 && IS_ENABLED(CONFIG_TRANSPORT_BIS))
 	ble_custom_nus_central_init();
-	pair_ultilities_flash_init();
-	uint8_t gw_if[6];
-	if(pair_ultilities_flash_read_gateway_info(gw_if) == 0)
+	// pair_ultilities_flash_init();
+	// uint8_t gw_if[6];
+	// if(pair_ultilities_flash_read_gateway_info(gw_if) == 0)
+	// {
+	// 	LOG_HEXDUMP_INF(gw_if, sizeof(gw_if), "Gw: info");
+	// }
+	// else 
+	// {
+	// 	LOG_WRN("NO gateway info");
+	// }
+	//pair_ultilities_gateway_pair_get();
+	ret = pair_ultilities_gateway_pair_get();
+	if(ret == -1)
 	{
-		LOG_HEXDUMP_INF(gw_if, sizeof(gw_if), "Gw: info");
-	}
-	else 
-	{
-		LOG_WRN("NO gateway info");
+		printf("No gw paired -> Please pair the device\r\n");
 	}
 #endif
 	//audio_system_init();

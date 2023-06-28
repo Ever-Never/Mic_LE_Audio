@@ -41,11 +41,14 @@ static struct nvs_fs fs;
 #define NVS_PARTITION_OFFSET	FIXED_PARTITION_OFFSET(NVS_PARTITION)
 
 #define NVS_GATEWAY_PAIR_INFO 0x02
-#define NVS_VOLUME_CONFIG 0x03
 #define NVS_RESET_HANDLE 0x03 
+
+#define NVS_TOTAL_GATEWAY_INFO 0x04
 
 #define SHUTDOWN_VALUE  0x12345678
 #define INVALID_VALUE 0xFFFFFFFF
+
+#define MAX_DEVICE_SUPPORT  10
 
  /******************************************************************************
                                    GLOBAL FUNCTIONS					    			 
@@ -62,6 +65,7 @@ static struct nvs_fs fs;
 static uint8_t m_mac_address[6];
 static uint8_t m_gateway_info[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
+static gateway_flash_data_t m_gateway_paired;
 /******************************************************************************
                                    LOCAL FUNCTIONS					    			 
  ******************************************************************************/
@@ -368,6 +372,15 @@ uint8_t pair_ultilities_flash_read_gateway_info(uint8_t *gateway_mac)
         return -1;
     }
 }
+
+uint8_t pair_ultilities_change_pair_gateway(uint8_t *target_mac)
+{
+    if(target_mac == NULL)
+    {
+        return -EINVAL;
+    }
+    memcpy(m_gateway_info, target_mac, 6);
+}
 /**/
 uint8_t* pair_ultitities_get_gateway_info()
 {
@@ -388,52 +401,12 @@ bool pair_ultilities_compare_mac(uint8_t *p_in_1, uint8_t *p_in_2)
 uint8_t pair_ultilities_flash_read_volume_cfg(uint8_t *volume_config)
 {
     int rc = 0;
-    rc = nvs_read(&fs, NVS_VOLUME_CONFIG, (uint8_t*)volume_config, 1);
-    if(rc > 0)
-    {
-        static bool m_is_first_time = false;
-        if(m_is_first_time == false){
-            m_is_first_time = true;
-            //LOG_INF("Found volume config user_volume: %u - regsister:0x%02x", *volume_config);
-        }
-        return 0;
-    }
-    else
-    {
-        LOG_ERR("Cannot found gateway data");
-        return -1;
-    }
+    return 0;
 }
 uint8_t pair_ultilities_flash_save_volume_cfg(uint8_t *volume_config)
 {
     int ret = 0;
     uint8_t read_config;
-    ret = pair_ultilities_flash_read_volume_cfg(&read_config);
-    if(ret == -1)
-    {
-        goto write_vol;
-    }
-    else if(ret == 0)
-    {
-        if(*volume_config == read_config)
-        {
-            return 0;
-        }
-        else
-        {
-            goto write_vol;
-        }
-    }
-write_vol:
-    ret = nvs_write(&fs, NVS_VOLUME_CONFIG, (uint8_t*)volume_config, 1);
-    if(ret)
-    {
-        LOG_INF("Save volume config\r\n");
-    }
-    else
-    {
-        LOG_WRN("Failed to save volume config to flash\r\n");
-    } 
     return ret;  
 }
 uint8_t pair_ultilities_flash_init()
@@ -542,4 +515,92 @@ void pair_ultitlities_set_device_name(char* P_pre_name)
     }
     LOG_INF("Change device name to %s", name);
     bt_set_name(name);
+}
+
+
+uint8_t pair_ultilities_gateway_pair_get(void)
+{
+    uint8_t ret = 0;
+    ret = pair_ultilities_gateway_pair_read(&m_gateway_paired);
+    if(ret == 0)
+    {
+        return ret;
+    }
+    else
+    {
+        memset(m_gateway_paired.raw, 0, sizeof(m_gateway_info));
+        return ret;
+    }
+}
+gateway_flash_data_t* pair_ultilities_gateway_pair_load(void)
+{
+    return &m_gateway_paired;
+}
+
+uint8_t pair_ultilities_gateway_pair_read(gateway_flash_data_t *gateway_mac)
+{
+    int rc = 0;
+    rc = nvs_read(&fs, NVS_TOTAL_GATEWAY_INFO, gateway_mac->raw, sizeof(gateway_flash_data_t));
+    if(rc > 0)
+    {
+        LOG_INF("[NVS] Found gateway paired area");
+        memcpy(m_gateway_info, gateway_mac, 6);
+        return 0;
+    }
+    else
+    {
+        LOG_ERR("Cannot found gateway paired data");
+        return -1;
+    }
+}
+
+int pair_ultilities_gateway_pair_write(uint8_t *new_gateway , uint8_t device_type)
+{
+    int ret = 0;
+    //gateway_flash_data_t l_read;
+    ret = pair_ultilities_gateway_pair_read(&m_gateway_paired);
+
+    if(ret == -1)
+    {
+        //memset()
+        goto write;
+    }
+    else if(ret == 0)
+    {
+        for(uint8_t i = 0; i < MAX_DEVICE_SUPPORT; i++)
+        {
+            if(memcmp(m_gateway_paired.refined.gateway_data[i].gw_refined.device_mac, new_gateway, 6) == 0)
+            {
+                LOG_INF("Duplicate gateway info");
+                return 0;
+            }
+        }
+        /*Determine the write index*/
+        if(m_gateway_paired.refined.selected_device++ >= MAX_DEVICE_SUPPORT)
+        {
+            m_gateway_paired.refined.selected_device = 0;
+        }
+        if(m_gateway_paired.refined.total_device++ >= MAX_DEVICE_SUPPORT)
+        {
+            m_gateway_paired.refined.total_device = MAX_DEVICE_SUPPORT;
+        }
+        
+        goto write;
+        
+    }
+write:
+    /*Must be careful in this copy or we will be suck :v*/
+    memcpy(m_gateway_paired.refined.gateway_data[m_gateway_paired.refined.selected_device - 1].gw_refined.device_mac, new_gateway, 6);
+    m_gateway_paired.refined.gateway_data[m_gateway_paired.refined.selected_device - 1].gw_refined.device_type = device_type;
+    ret = nvs_write(&fs, NVS_TOTAL_GATEWAY_INFO, m_gateway_paired.raw, sizeof(m_gateway_paired));
+    if(ret >= sizeof(m_gateway_paired))
+    {
+        memcpy(m_gateway_paired.raw, m_gateway_paired.raw, sizeof(gateway_flash_data_t));
+        LOG_INF("Save gateway data to index: %d\r\n", m_gateway_paired.refined.selected_device);
+    }
+    else
+    {
+        LOG_WRN("Failed ti save gateway data to flash\r\n");
+    } 
+    return ret; 
 }

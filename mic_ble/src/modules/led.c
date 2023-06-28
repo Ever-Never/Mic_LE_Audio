@@ -324,6 +324,7 @@ void app_led_indicator_pair_success()
 void app_led_indicator_pair_timeout()
 {
 	led_off(LED_POWER);
+	led_on(LED_POWER, LED_ON_FOREVER);	
 	m_last_time_stop_stream = false;
 
 }

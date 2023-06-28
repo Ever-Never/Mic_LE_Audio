@@ -13,7 +13,12 @@
 
 #define DEVICE_NAME_PEER CONFIG_BT_DEVICE_NAME
 #define DEVICE_NAME_PEER_LEN (sizeof(DEVICE_NAME_PEER) - 1)
+#define DEVICE_TYPE_GATEWAY_MIXER   0xAA		/*Gateway - MIC cua su tru tri*/
+#define DEVICE_TYPE_GATEWAY_SUB		0xCC		/*Gateway - MIC cua cac phat tu*/
+#define DEVICE_TYPE_SPEAKER         0xBB		/*Loa tai cac phong*/
 
+#define ADV_SERVICE_CONTROL_HEADSET	0x45
+#define BYTECH_MANUFACTURE_ID		0xABCD
 
 #if(CONFIG_BIS_STEREO_HEADSET)
 #define CH_NUM 2
@@ -165,7 +170,19 @@ struct encoded_audio {
 	size_t size;
 	uint8_t num_ch;
 };
-
+typedef union 
+{
+	/* data */
+	struct 
+	{
+		uint16_t comapny_id;
+		uint8_t adv_service;	
+		uint8_t device_type;
+		uint8_t request_to_speak;
+		uint8_t mac[6];
+	}refined;
+	uint8_t raw[11];
+}manu_ext_adv_data_t;
 /**
  * @brief Generic function for a user defined button press
  *
@@ -253,4 +270,9 @@ int le_audio_enable(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestamp
  */
 int le_audio_disable(void);
 
+
+#if(CONFIG_AUDIO_DEV == HEADSET)
+int ble_start_scan_vaid_broadcast_source(void);
+int ble_stop_scan_broadcast_source(void);
+#endif
 #endif /* _LE_AUDIO_H_ */

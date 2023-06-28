@@ -167,7 +167,7 @@ static void disconnected(struct bt_conn *conn, uint8_t reason)
 		*/
 		/*Stop advertising pair msg*/
 		ble_custom_nus_stop_pair();
-		m_pair_done_fn(NULL);
+		m_pair_done_fn(NULL, NULL);
 		m_pair_done_fn = NULL;
 	}
 }

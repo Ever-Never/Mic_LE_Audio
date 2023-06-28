@@ -18,9 +18,15 @@
 #include "nrf5340_audio_common.h"
 #include "hw_codec.h"
 #include "channel_assignment.h"
-
+#include <bluetooth/scan.h>
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(bis_headset, CONFIG_BLE_LOG_LEVEL);
+#include "pair_ultilities.h"
+#include "streamctrl.h"
+#include "pair_ultilities.h"
+
+
+LOG_MODULE_REGISTER(bis_headset, 5);
+
 
 BUILD_ASSERT(CONFIG_BT_BAP_BROADCAST_SNK_STREAM_COUNT <= 2,
 	     "A maximum of two broadcast streams are currently supported");
@@ -79,6 +85,10 @@ static bool init_routine_completed;
 static bool playing_state = true;
 
 static int bis_headset_cleanup(void);
+
+static void scan_manu_receiver(const bt_addr_le_t *addr, int8_t rssi, uint8_t type, struct net_buf_simple *ad);
+int ble_start_scan_vaid_broadcast_source(void);
+int ble_stop_scan_broadcast_source(void);
 
 static void le_audio_event_publish(enum le_audio_evt_type event)
 {
@@ -141,7 +151,35 @@ static bool bitrate_check(const struct bt_codec *codec)
 
 	return true;
 }
-
+static bool scan_check_network_name(struct bt_data *data, void *user_data)
+{
+	bool *p_network_check = (bool*)user_data;
+	static const uint8_t BT_NAME_FIXED_LEN = 20;
+	static bool m_first_time = false;
+	if(data->type != BT_DATA_NAME_COMPLETE)
+	{
+		return true;
+	}
+	if(data->data_len != BT_NAME_FIXED_LEN - 1)
+	{
+		return true;
+	}
+	static uint8_t advertising_address[6];
+	LOG_INF("pair data:%s", data->data);
+	bool ret = pair_utilities_get_mac_from_name(data->data, advertising_address);
+	if(ret)
+	{
+		if(memcmp(advertising_address, pair_ultitities_get_gateway_info(), 6) == 0)
+		{
+			*p_network_check = true;
+		}
+		else
+		{
+			*p_network_check = false;
+		}
+	}
+	return false;
+}
 static bool adv_data_parse(struct bt_data *data, void *user_data)
 {
 	struct bt_name *bis_name = (struct bt_name *)user_data;
@@ -173,6 +211,7 @@ static void stream_stopped_cb(struct bt_bap_stream *stream, uint8_t reason)
 static void stream_recv_cb(struct bt_bap_stream *stream, const struct bt_iso_recv_info *info,
 			   struct net_buf *buf)
 {
+	static uint32_t recv_cnt;
 	bool bad_frame = false;
 
 	if (receive_cb == NULL) {
@@ -186,6 +225,16 @@ static void stream_recv_cb(struct bt_bap_stream *stream, const struct bt_iso_rec
 
 	receive_cb(buf->data, buf->len, bad_frame, info->ts, active_stream_index,
 		   active_stream.codec->octets_per_sdu);
+	static bool test = false;
+	recv_cnt++;
+	if ((recv_cnt % 1000U) == 0U) {
+		LOG_DBG("Received %d total ISO packets", recv_cnt);
+		audio_state_data_t audio_evt;
+		audio_evt.evt = AUDIO_STATE_EVT_RECEIVE_SRC_DATA;
+		memcpy(audio_evt.data, &recv_cnt, sizeof(recv_cnt));
+		audio_evt.data_len = sizeof(recv_cnt);
+		audio_state_publish_event(audio_evt);
+	}
 }
 
 static struct bt_bap_stream_ops stream_ops = {
@@ -199,6 +248,18 @@ static struct bt_bap_stream_ops stream_ops = {
 static bool scan_recv_cb(const struct bt_le_scan_recv_info *info, struct net_buf_simple *ad,
 			 uint32_t broadcast_id)
 {
+#if(1)
+	bool l_is_same_network = false;
+	bt_data_parse(ad, scan_check_network_name, (void*)&l_is_same_network);
+	if(!l_is_same_network)
+	{
+		return false;
+	}
+	else
+	{
+		return true;
+	}
+#else
 	char name[MAX(sizeof(CONFIG_BT_AUDIO_BROADCAST_NAME),
 		      sizeof(CONFIG_BT_AUDIO_BROADCAST_NAME_ALT))] = { '\0' };
 	struct bt_name bis_name = { &name[0], ARRAY_SIZE(name) };
@@ -213,6 +274,7 @@ static bool scan_recv_cb(const struct bt_le_scan_recv_info *info, struct net_buf
 			return true;
 		}
 	}
+#endif
 
 	return false;
 }
@@ -263,11 +325,11 @@ static void pa_sync_lost_cb(struct bt_bap_broadcast_sink *sink)
 	}
 
 	LOG_INF("Restarting scanning for broadcast sources after sync lost");
-
-	ret = bt_bap_broadcast_sink_scan_start(BT_LE_SCAN_PASSIVE);
-	if (ret) {
-		LOG_ERR("Unable to start scanning for broadcast sources");
-	}
+	/*Back to find valid device*/
+	audio_state_data_t audio_evt;
+	audio_evt.evt = AUDIO_STATE_EVT_LOSS_SYNC;
+	audio_evt.data_len = 0;
+	audio_state_publish_event(audio_evt);
 }
 
 static void base_recv_cb(struct bt_bap_broadcast_sink *sink, const struct bt_bap_base *base)
@@ -634,8 +696,15 @@ int le_audio_enable(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestmp_
 
 	ret = initialize(recv_cb);
 	if (ret) {
-		LOG_ERR("Failed to initialize");
-		return ret;
+		if(ret == -EALREADY)
+		{
+			LOG_WRN("Already init le audio recv cb");
+		}
+		else
+		{
+			LOG_ERR("Failed to initialize");
+			return ret;
+		}
 	}
 
 	ret = bis_headset_cleanup();
@@ -650,7 +719,6 @@ int le_audio_enable(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestmp_
 	if (ret) {
 		return ret;
 	}
-
 	LOG_DBG("LE Audio enabled");
 
 	return 0;
@@ -669,4 +737,72 @@ int le_audio_disable(void)
 	LOG_DBG("LE Audio disabled");
 
 	return 0;
+}
+
+#define BYTECH_MANUFACTURE_DATA_LEN 13
+static bool manufacture_data_parser(struct bt_data *scan_data, void *user_data)
+{
+	manu_ext_adv_data_t *manudata = (manu_ext_adv_data_t*)user_data;
+	if(scan_data->type == BT_DATA_MANUFACTURER_DATA && scan_data->data_len == BYTECH_MANUFACTURE_DATA_LEN - 1)
+	{
+		memcpy(manudata->raw, scan_data->data, scan_data->data_len);
+		return false;
+	}
+	else
+	{
+		return true;
+	}
+
+}
+static void scan_manu_receiver(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
+			 struct net_buf_simple *ad)
+{
+	int ret = 0;
+	manu_ext_adv_data_t manu_data;
+	char dev[BT_ADDR_LE_STR_LEN];
+	/*Scan for manufacture data*/
+	bt_addr_le_to_str(addr, dev, sizeof(dev));
+	bt_data_parse(ad, manufacture_data_parser, (void *)&manu_data);
+	if(manu_data.refined.comapny_id == BYTECH_MANUFACTURE_ID)
+	{
+		printk("Found Bytech data control :%d\r\n", manu_data.refined.request_to_speak);
+		LOG_HEXDUMP_WRN(manu_data.refined.mac, 6, "Mac");
+		static bool call_this_one_time = 0;
+		audio_state_data_t audio_evt;
+		audio_evt.evt = AUDIO_STATE_EVT_FOUND_VALID_SRC;
+		memcpy(audio_evt.data, manu_data.raw, sizeof(manu_ext_adv_data_t));
+		audio_evt.data_len = sizeof(manu_ext_adv_data_t);
+		audio_state_publish_event(audio_evt);
+	}
+}
+
+int ble_start_scan_vaid_broadcast_source(void)
+{
+
+	int err = 0;
+	struct bt_le_scan_param scan_param = 
+	{
+		.type       = BT_LE_SCAN_TYPE_ACTIVE,
+		.options    = BT_LE_SCAN_OPT_NONE,
+		.interval   = BT_GAP_SCAN_FAST_INTERVAL,
+		.window     = BT_GAP_SCAN_FAST_WINDOW,
+	};
+	err = bt_le_scan_start(&scan_param, scan_manu_receiver);
+	if (err) {
+		printk("Scanning failed to start (err %d)\n", err);
+		return;
+	}
+	printk("[%s]Scanning successfully started\n", __FUNCTION__);
+}
+int ble_stop_scan_broadcast_source(void)
+{
+	int err = 0;
+	err = bt_le_scan_stop();
+	bt_scan_reset();
+	//bt_le_scan_cb_unregister()
+	if (err) {
+		printk("Scanning failed to stop (err %d)\n", err);
+		return err;
+	}
+	printk("[%s]Scanning successfully stopped\n", __FUNCTION__);
 }

@@ -8,8 +8,7 @@
 #define MIXER_DEFAULT_TOKEN 0x6996abcd
 #define MIXER_DEFAULT_RESPONSE_TOKEN    0x12345678
 
-#define DEVICE_TYPE_GATEWAY_MIXER   0xAA
-#define DEVICE_TYPE_SPEAKER         0xBB
+
 
 /**/
 #define MIXER_MESSAGE_ID_PAIR   0x02
@@ -31,7 +30,30 @@ typedef struct {
     uint32_t reponse_msg_token;
 }pair_response_message_t;
 
-typedef int(*ble_custom_nus_fair_done_callback)(le_audio_receive_cb rec_cb);
+typedef union
+{
+    struct{
+        uint8_t device_mac[6];
+        uint8_t device_type;
+        uint8_t request_to_speak;
+        uint8_t priority_level;
+    }gw_refined;
+    uint8_t gw_raw[9];
+}gateway_data_t;
+
+typedef union
+{
+    struct pair_ultilities
+    {
+        /* data */
+        gateway_data_t gateway_data[10];
+        uint8_t total_device;
+        uint8_t selected_device;
+    }refined;
+    uint8_t raw[92];
+}gateway_flash_data_t;
+
+typedef int(*ble_custom_nus_fair_done_callback)(le_audio_receive_cb rec_cb,le_audio_timestamp_cb ts_cb);
 
 bool pair_utilities_get_mac_from_name(char *p_name, uint8_t *p_mac_address);
 
@@ -58,4 +80,15 @@ uint32_t GetHexNumberFromString(uint16_t BeginAddress, char* Buffer , uint32_t l
 uint8_t ultilities_flash_get_reset(void);
 
 uint8_t ultilities_flash_set_reset_val(bool shutdown);
+
+
+uint8_t pair_ultilities_gateway_pair_read(gateway_flash_data_t *gateway_mac);
+
+int pair_ultilities_gateway_pair_write(uint8_t *new_gateway, uint8_t device_type);
+
+gateway_flash_data_t* pair_ultilities_gateway_pair_load(void);
+
+uint8_t pair_ultilities_gateway_pair_get(void);
+
+uint8_t pair_ultilities_change_pair_gateway(uint8_t *target_mac);
 #endif

@@ -43,6 +43,7 @@
 
 #define CONFIG_BATTERY_MEASURE_MENT_SUB_STACK_SIZE	512
 #define CONFIG_PAIR_TIMEOUT_SUB_STACK_SIZE	512
+#define CONFIG_AUDIO_STATE_MACHINE_SUB_STACK_SIZE 2048
 
 LOG_MODULE_REGISTER(streamctrl, CONFIG_STREAMCTRL_LOG_LEVEL);
 
@@ -61,33 +62,64 @@ DATA_FIFO_DEFINE(ble_fifo_rx, CONFIG_BUF_BLE_RX_PACKET_NUM, WB_UP(sizeof(struct 
 ZBUS_SUBSCRIBER_DEFINE(button_sub, CONFIG_BUTTON_MSG_SUB_QUEUE_SIZE);
 ZBUS_SUBSCRIBER_DEFINE(le_audio_evt_sub, CONFIG_LE_AUDIO_MSG_SUB_QUEUE_SIZE);
 ZBUS_SUBSCRIBER_DEFINE(battery_measure_sub, 1);
+ZBUS_SUBSCRIBER_DEFINE(audio_state_sub, 10);
 
 
 static struct k_thread audio_datapath_thread_data;
 static struct k_thread button_msg_sub_thread_data;
 static struct k_thread le_audio_msg_sub_thread_data;
 static struct k_thread battery_measurement_thread_data;
+#if(CONFIG_AUDIO_DEV == HEADSET)
+static struct k_thread audio_state_machine_thread_data;
+#endif
 
 static k_tid_t audio_datapath_thread_id;
 static k_tid_t button_msg_sub_thread_id;
 static k_tid_t le_audio_msg_sub_thread_id;
 static k_tid_t battery_measurement_thread_id;
+#if(CONFIG_AUDIO_DEV == HEADSET)
+static k_tid_t audio_state_machine_thread_id;
+#endif
 
 
 K_THREAD_STACK_DEFINE(audio_datapath_thread_stack, CONFIG_AUDIO_DATAPATH_STACK_SIZE);
 K_THREAD_STACK_DEFINE(button_msg_sub_thread_stack, CONFIG_BUTTON_MSG_SUB_STACK_SIZE);
 K_THREAD_STACK_DEFINE(le_audio_msg_sub_thread_stack, CONFIG_LE_AUDIO_MSG_SUB_STACK_SIZE);
 K_THREAD_STACK_DEFINE(battery_measurement_thread_stack, CONFIG_BATTERY_MEASURE_MENT_SUB_STACK_SIZE);
-
+#if(CONFIG_AUDIO_DEV == HEADSET)
+K_THREAD_STACK_DEFINE(audio_state_machine_thread_stack, CONFIG_AUDIO_STATE_MACHINE_SUB_STACK_SIZE);
+#endif
 /*Define paring thread timeout monitor for device*/
 static struct k_thread pair_timeout_thread_data;
 static k_tid_t pair_timeout_thread_id;
 K_THREAD_STACK_DEFINE(pair_timeout_thread_stack, CONFIG_PAIR_TIMEOUT_SUB_STACK_SIZE);
 
 #if(CONFIG_AUDIO_DEV == 2)
+
+
+
+
 ZBUS_SUBSCRIBER_DEFINE(pair_peripheral_sub, 4);
 #else
+
+
+#define CONFIG_AUDIO_STATE_PUBLISH_STACK_SIZE	1024
+#define CONFIG_AUDIO_STATE_PUBLISH_THREAD_PRIO 	5
+
+
+static void audio_state_publish_thread(void);
+
+ZBUS_CHAN_DEFINE(audio_state_channel, audio_state_data_t, NULL, NULL, ZBUS_OBSERVERS_EMPTY,
+		 ZBUS_MSG_INIT(0));
+K_THREAD_DEFINE(audio_state_publish_id, CONFIG_AUDIO_STATE_PUBLISH_STACK_SIZE, audio_state_publish_thread,
+		NULL, NULL, NULL, K_PRIO_PREEMPT(CONFIG_AUDIO_STATE_PUBLISH_THREAD_PRIO), 0, 0);
+/* Only allow one button msg at a time, as a mean of debounce */
+K_MSGQ_DEFINE(audio_state_queue, sizeof(audio_state_data_t), 1, 16);
+
+
 ZBUS_SUBSCRIBER_DEFINE(pair_central_sub, 4);
+
+
 #endif
 static enum stream_state strm_state = STATE_PAUSED;
 
@@ -108,12 +140,39 @@ static void button_evt_handler(struct button_evt event);
 static void adc_eve_handler(battery_event_t event);
 
 
+
+
+
 static button_pressed_cb_handler m_button_handler[] = 
 {
 	button_pressed_event_handler,
 	button_long_pressed_event_handler
 };
+#if(CONFIG_AUDIO_DEV == HEADSET)
+int audio_state_publish_event(audio_state_data_t audio_state)
+{
+	int ret = 0;
+	ret = k_msgq_put(&audio_state_queue, (void *)&audio_state, K_NO_WAIT);
+	if(ret == -EAGAIN)
+	{
+		LOG_WRN("Audio state queue full");
+	}
+}
+static void audio_state_publish_thread(void)
+{
+	int ret;
+	audio_state_data_t msg;
 
+	while (1) {
+		k_msgq_get(&audio_state_queue, &msg, K_FOREVER);
+
+		ret = zbus_chan_pub(&audio_state_channel, &msg, K_NO_WAIT);
+		if (ret) {
+			LOG_ERR("Failed to publish audio event, ret: %d", ret);
+		}
+	}
+}
+#endif
 /* Callback for handling BLE RX */
 static void le_audio_rx_data_handler(uint8_t const *const p_data, size_t data_size, bool bad_frame,
 				     uint32_t sdu_ref, enum audio_channel channel_index,
@@ -333,13 +392,226 @@ static void pair_timeout_sub_thread(void)
 #elif(CONFIG_AUDIO_DEV == HEADSET)
 		ret = zbus_sub_wait(&pair_central_sub, &chan, K_FOREVER);
 		ERR_CHK(ret);
+#if(CONFIG_AUDIO_DEV == HEADSET)
 		struct nus_central_event msg;
-#endif
+
 		ret = zbus_chan_read(chan, &msg, K_MSEC(100));
+		switch(msg.event)
+		{
+			case NUS_CENTRAL_EVENT_PAIR_START:
+			{
+				//ret = ble_stop_scan_broadcast_source();
+				//ret = le_audio_disable();
+				//ret = ble_custom_nus_central_start_find_pair_device(le_audio_enable);
+
+				audio_state_data_t audio_evt;
+				audio_evt.evt = AUDIO_STATE_EVT_ENTER_PAIR;
+				audio_evt.data_len = 0;
+				audio_state_publish_event(audio_evt);
+				app_led_indicator_in_pair();
+			}
+			break;
+			case NUS_CENTRAL_EVENT_PAIR_TIMEOUT:
+			{
+				app_led_indicator_pair_timeout();
+				ble_custome_nus_central_stop_find_pair_device();
+				audio_state_data_t audio_evt;
+				audio_evt.evt = AUDIO_STATE_EVT_EXIT_PAIR;
+				audio_evt.data_len = 0;
+				audio_state_publish_event(audio_evt);
+			}
+				break;
+			case NUS_CENTRAL_EVENT_PAIR_SUCCESS:
+			{
+				app_led_indicator_pair_timeout();
+				audio_state_data_t audio_evt;
+				audio_evt.evt = AUDIO_STATE_EVT_EXIT_PAIR;
+				audio_evt.data_len = 0;
+				audio_state_publish_event(audio_evt);
+			}
+				break;
+			default:
+			break;
+		}
+#endif
+#endif
 		//pair_timeout(msg.event);
 		STACK_USAGE_PRINT("battery measurement thread", &battery_measurement_thread_data);
 	}
 }
+
+/*
+* @brief: Valid the correct paired data
+*/
+static bool manufacture_data_validate(manu_ext_adv_data_t data)
+{
+	/*This had better priority* -> Gateway auto speak if the is other devicce is speaking*/
+	if(data.refined.device_type == DEVICE_TYPE_GATEWAY_SUB)
+	{
+		for(uint8_t i = 0; i < pair_ultilities_gateway_pair_load()->refined.total_device; i++)
+		{
+			if(memcmp(pair_ultilities_gateway_pair_load()->refined.gateway_data[i].gw_refined.device_mac, data.refined.mac, 6) == 0)
+			{
+				pair_ultilities_gateway_pair_load()->refined.gateway_data[i].gw_refined.request_to_speak = data.refined.request_to_speak;
+				if(data.refined.request_to_speak)
+				{
+					pair_ultilities_change_pair_gateway(data.refined.mac);
+					return true;
+				}
+				else
+				{
+					return false;
+				}
+			}
+		}
+	}
+	if(data.refined.device_type == DEVICE_TYPE_GATEWAY_MIXER)
+	{
+		for(uint8_t i = 0; i < pair_ultilities_gateway_pair_load()->refined.total_device; i++)
+		{
+			if(memcmp(pair_ultilities_gateway_pair_load()->refined.gateway_data[i].gw_refined.device_mac, data.refined.mac, 6) == 0)
+			{
+				pair_ultilities_change_pair_gateway(data.refined.mac);
+				return true;
+			}
+		}
+	}
+	return false;
+
+}
+#if(CONFIG_AUDIO_DEV == HEADSET)
+static void audio_state_machine_thread(void)
+{
+	static audio_state_t audio_state = AUDIO_STATE_INIT;
+	int ret = 0;
+	const struct zbus_channel *chan;
+	while(1)
+	{
+		ret = zbus_sub_wait(&audio_state_sub, &chan, K_FOREVER);
+		audio_state_data_t msg;
+		ret = zbus_chan_read(chan, &msg, K_MSEC(100));
+		if(msg.evt == AUDIO_STATE_EVT_ENTER_PAIR)
+		{
+			audio_state = AUDIO_STATE_PAIR_STATE;
+			/**/
+			ret = ble_stop_scan_broadcast_source();
+			ret = le_audio_disable();
+			ret = ble_custom_nus_central_start_find_pair_device(NULL);
+		}
+		switch(audio_state)
+		{
+			case AUDIO_STATE_INIT:
+			{
+				if(msg.evt == AUDIO_STATE_EVT_INIT)
+				{	
+					printk("Audio state INIT - evnt INIT\r\n");
+					ret = le_audio_disable();
+					audio_state = AUDIO_STATE_FIND_VALID_DEVICE;
+					audio_state_data_t audio_evt;
+					audio_evt.evt = AUDIO_STATE_EVT_START_ADV;
+					audio_evt.data_len = 0;
+					audio_state_publish_event(audio_evt);
+				}
+			}
+			break;
+			case AUDIO_STATE_FIND_VALID_DEVICE:
+			{
+				switch(msg.evt)
+				{
+					case AUDIO_STATE_EVT_START_ADV:
+					{
+						printk("Audio state FIND DEVICE - evnt START ADV\r\n");
+						ret = ble_start_scan_vaid_broadcast_source();
+					}
+					break;
+					case AUDIO_STATE_EVT_FOUND_VALID_SRC:
+					{
+						LOG_INF("Audio state FOUND VALID - evnt FOUND VALID SRC");
+
+						/*Valid the valid source :D*/
+						manu_ext_adv_data_t evt_data;
+						memcpy(evt_data.raw, msg.data, msg.data_len);
+						/*Check if device is pairded -> else don't care*/
+						bool valid = manufacture_data_validate(evt_data);
+						if(valid == 0)
+						{
+							printk("Not a paired gateway\r\n");
+							break;;
+						}			
+
+						/**/
+						ret = ble_stop_scan_broadcast_source();
+						ret = le_audio_enable(NULL, NULL);
+						if(ret)
+						{
+							printk("[%s]LE audio enable failed %d", ret, __FUNCTION__);
+						}
+						audio_state = AUDIO_STATE_SYNCING_SRC;
+					}
+					break;
+				}
+			}
+			break;
+			case AUDIO_STATE_SYNCING_SRC:
+			{
+				//ret = ble_stop_scan_broadcast_source();
+				switch(msg.evt)
+				{
+					case AUDIO_STATE_EVT_RECEIVE_SRC_DATA:
+					{
+						audio_state = AUDIO_STATE_SYNC_AND_RECEIVE_SRC_DATA;
+					}
+					break;
+					default:
+					break;
+				}
+			}
+			break;
+			case AUDIO_STATE_SYNC_AND_RECEIVE_SRC_DATA:
+			{
+				switch(msg.evt)
+				{
+					case AUDIO_STATE_EVT_LOSS_SYNC:
+						ret = le_audio_disable();
+						if(ret)
+						{
+							printk("[%s]LE audio enable failed %d", ret, __FUNCTION__);
+						}
+						//audio_state = AUDIO_STATE_FIND_VALID_DEVICE;
+						audio_state = AUDIO_STATE_FIND_VALID_DEVICE;
+						audio_state_data_t audio_evt;
+						audio_evt.evt = AUDIO_STATE_EVT_START_ADV;
+						audio_evt.data_len = 0;
+						audio_state_publish_event(audio_evt);
+					break;
+					case AUDIO_STATE_EVT_RECEIVE_SRC_DATA:
+						break;
+					default:
+						break;
+				}
+			}
+			break;
+			case AUDIO_STATE_PAIR_STATE:
+			{
+				LOG_INF("AUdio PAIR STATE");
+				if(msg.evt == AUDIO_STATE_EVT_EXIT_PAIR)
+				{
+					LOG_INF("Audio PAIR STATE - EXIT ENV");
+					ble_custome_nus_central_stop_find_pair_device();
+					audio_state = AUDIO_STATE_INIT;
+					audio_state_data_t audio_evt;
+					audio_evt.evt = AUDIO_STATE_EVT_INIT;
+					audio_evt.data_len = 0;
+					audio_state_publish_event(audio_evt);
+				}
+			}
+			break;
+			default:
+				break;
+		}
+	}
+}
+#endif
 
 int streamctrl_start(void)
 {
@@ -389,10 +661,26 @@ int streamctrl_start(void)
 				K_PRIO_PREEMPT(5), 0, K_NO_WAIT);
 	ret = k_thread_name_set(pair_timeout_thread_id, "PAIR TIMEOUT");
 	ERR_CHK(ret);
-
+#if(CONFIG_AUDIO_DEV == HEADSET)
+	audio_state_machine_thread_id =
+		k_thread_create(&audio_state_machine_thread_data, audio_state_machine_thread_stack,
+				CONFIG_AUDIO_STATE_MACHINE_SUB_STACK_SIZE,
+				(k_thread_entry_t)audio_state_machine_thread, NULL, NULL, NULL,
+				K_PRIO_PREEMPT(5), 0, K_NO_WAIT);
+	ret = k_thread_name_set(audio_state_machine_thread_id, "AUDIO STATE MACHINE");
+	ERR_CHK(ret);
+#endif
 	ret = le_audio_enable(le_audio_rx_data_handler, audio_datapath_sdu_ref_update);
 	ERR_CHK_MSG(ret, "Failed to enable LE Audio");
-
+#if(CONFIG_AUDIO_DEV == HEADSET)
+		// ret = le_audio_disable();
+		// ret = ble_start_scan_vaid_broadcast_source();
+	audio_state_data_t audio_evt;
+	audio_evt.evt = AUDIO_STATE_EVT_INIT;
+	audio_evt.data_len = 0;
+	audio_state_publish_event(audio_evt);
+#endif
+	/*stop scanning for broadcast source*/
 	return 0;
 }
 
@@ -416,9 +704,9 @@ static void le_audio_evt_handler(enum le_audio_evt_type event)
 		stream_state_set(STATE_STREAMING);
 #if(1)
 		app_led_indicator_streaming();
+		
 #endif
 		break;
-
 	case LE_AUDIO_EVT_NOT_STREAMING:
 		LOG_DBG("LE audio evt not_streaming");
 		(void)pres_delay_us;
@@ -510,14 +798,18 @@ static void button_pressed_event_handler(button_pin_t button_pin)
 
 #endif
 #if(CONFIG_AUDIO_DEV == GATEWAY && IS_ENABLED(CONFIG_TRANSPORT_BIS))
-		//ret = le_audio_disable();
+		ret = le_audio_disable();
 		ret = ble_custom_nus_start_pair(le_audio_enable);
 #elif(CONFIG_AUDIO_DEV == HEADSET && IS_ENABLED(CONFIG_TRANSPORT_BIS))
-		ret = ble_custom_nus_central_start_find_pair_device(le_audio_enable);
+		struct nus_central_event evt = {0};
+		evt.event = NUS_CENTRAL_EVENT_PAIR_START;
+		ble_custom_nus_central_dispatch_evt(evt);
 #endif
-		if(ret){
-			LOG_WRN("Button pressed failed\r\n");		
-		}
+// 		ret = ble_custom_nus_central_start_find_pair_device(le_audio_enable);
+// #endif
+// 		if(ret){
+// 			LOG_WRN("Button pressed failed\r\n");		
+// 		}
 		app_led_indicator_in_pair();
 		break;
 	}
@@ -527,6 +819,7 @@ static void button_pressed_event_handler(button_pin_t button_pin)
 		break;
 	
 	case BUTTON_VOLUME_DOWN:
+		//ble_start_scan_vaid_broadcast_source();
 		hw_codec_volume_decrease();
 		break;
 

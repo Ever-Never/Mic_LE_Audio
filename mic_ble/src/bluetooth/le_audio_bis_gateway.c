@@ -18,7 +18,13 @@
 #include "nrf5340_audio_common.h"
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(bis_gateway, CONFIG_BLE_LOG_LEVEL);
+
+#include <zephyr/bluetooth/conn.h>
+#include <zephyr/bluetooth/uuid.h>
+
+#include <zephyr/settings/settings.h>
+#include "pair_ultilities.h"
+LOG_MODULE_REGISTER(bis_gateway, 5);
 
 BUILD_ASSERT(CONFIG_BT_BAP_BROADCAST_SRC_STREAM_COUNT <= 2,
 	     "A maximum of two audio streams are currently supported");
@@ -56,6 +62,8 @@ static uint32_t seq_num[CONFIG_BT_BAP_BROADCAST_SRC_STREAM_COUNT];
 static struct bt_le_ext_adv *adv;
 
 static le_audio_timestamp_cb timestamp_cb;
+static int non_connectable_adv_create(manu_ext_adv_data_t adv_data);
+
 
 static void le_audio_event_publish(enum le_audio_evt_type event)
 {
@@ -156,26 +164,7 @@ static void stream_stopped_cb(struct bt_bap_stream *stream, uint8_t reason)
 	}
 }
 
-static void on_device_found(const bt_addr_le_t *addr, int8_t rssi, uint8_t type,
-			    struct net_buf_simple *p_ad)
-{
-	if (type == BT_GAP_ADV_TYPE_ADV_IND || type == BT_GAP_ADV_TYPE_EXT_ADV) {
-		/* Note: May lead to connection creation */
-		ad_parse(p_ad, addr);
-	}
-}
-static void ble_acl_start_scan(void)
-{
-	int ret;
 
-	ret = bt_le_scan_start(BT_LE_SCAN_PASSIVE, on_device_found);
-	if (ret) {
-		LOG_WRN("Scanning failed to start: %d", ret);
-		return;
-	}
-
-	LOG_INF("Scanning successfully started");
-}
 
 static struct bt_bap_stream_ops stream_ops = {
 	.started = stream_started_cb,
@@ -209,7 +198,7 @@ static void public_broadcast_features_set(uint8_t *features)
 	}
 }
 #endif /* (CONFIG_AURACAST) */
-
+#define USER_CONFIG 1
 static int adv_create(void)
 {
 	int ret;
@@ -224,7 +213,11 @@ static int adv_create(void)
 	struct bt_data ext_ad[4];
 	uint8_t pba_features = 0;
 #else
+#if(USER_CONFIG)
+	struct bt_data ext_ad;
+#else
 	struct bt_data ext_ad[3];
+#endif
 #endif /* (CONFIG_AURACAST) */
 	struct bt_data per_ad;
 
@@ -253,7 +246,15 @@ static int adv_create(void)
 	} else {
 		broadcast_id = CONFIG_BT_AUDIO_BROADCAST_ID_FIXED;
 	}
+#if(USER_CONFIG)
+	/* Setup extended advertising data */
+	net_buf_simple_add_le16(&ad_buf, BT_UUID_BROADCAST_AUDIO_VAL);
+	net_buf_simple_add_le24(&ad_buf, broadcast_id);
 
+	ext_ad.type = BT_DATA_SVC_DATA16;
+	ext_ad.data_len = ad_buf.len;
+	ext_ad.data = ad_buf.data;
+#else
 	ext_ad[0] = (struct bt_data)BT_DATA_BYTES(BT_DATA_BROADCAST_NAME,
 						  CONFIG_BT_AUDIO_BROADCAST_NAME);
 
@@ -266,7 +267,7 @@ static int adv_create(void)
 	ext_ad[2] = (struct bt_data)BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE,
 						  (CONFIG_BT_DEVICE_APPEARANCE >> 0) & 0xff,
 						  (CONFIG_BT_DEVICE_APPEARANCE >> 8) & 0xff);
-
+#endif
 #if (CONFIG_AURACAST)
 	public_broadcast_features_set(&pba_features);
 
@@ -278,7 +279,11 @@ static int adv_create(void)
 	ext_ad[3] = (struct bt_data)BT_DATA(BT_DATA_SVC_DATA16, pba_buf.data, pba_buf.len);
 #endif /* (CONFIG_AURACAST) */
 
+#if(USER_CONFIG)
+	ret = bt_le_ext_adv_set_data(adv, &ext_ad, 1, NULL, 0);
+#else
 	ret = bt_le_ext_adv_set_data(adv, ext_ad, ARRAY_SIZE(ext_ad), NULL, 0);
+#endif
 	if (ret) {
 		LOG_ERR("Failed to set extended advertising data: %d", ret);
 		return ret;
@@ -316,16 +321,18 @@ static int initialize(le_audio_timestamp_cb timestmp_cb)
 	struct bt_bap_broadcast_source_create_param create_param;
 
 	if (initialized) {
-		LOG_WRN("Already initialized");
-		return -EALREADY;
+		//LOG_WRN("Already initialized");
+		//return -EALREADY;
 	}
 
 	if (timestmp_cb == NULL) {
-		LOG_ERR("Timestamp callback is NULL");
-		return -EINVAL;
+		//LOG_ERR("Timestamp callback is NULL");
+		//return -EINVAL;
 	}
-
-	timestamp_cb = timestmp_cb;
+	if(!initialized)
+	{
+		timestamp_cb = timestmp_cb;
+	}
 
 	(void)memset(audio_streams, 0, sizeof(audio_streams));
 
@@ -378,12 +385,20 @@ static int initialize(le_audio_timestamp_cb timestmp_cb)
 	}
 
 	/* Create advertising set */
-	ret = adv_create();
-
-	if (ret) {
-		LOG_ERR("Failed to create advertising set");
-		return ret;
+	if(initialized == false)
+	{
+		ret = adv_create();
+		if (ret) {
+			LOG_ERR("Failed to create advertising set");
+			return ret;
+		}
 	}
+	// ret = adv_create();
+
+	// if (ret) {
+	// 	LOG_ERR("Failed to create advertising set");
+	// 	return ret;
+	// }
 
 	initialized = true;
 
@@ -529,15 +544,18 @@ int le_audio_send(struct encoded_audio enc_audio)
 int le_audio_enable(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestmp_cb)
 {
 	int ret;
-
+	static bool first_time = false;
 	ARG_UNUSED(recv_cb);
 
 	LOG_INF("Starting broadcast gateway %s", CONFIG_BT_AUDIO_BROADCAST_NAME);
 
 	ret = initialize(timestmp_cb);
 	if (ret) {
-		LOG_ERR("Failed to initialize");
-		return ret;
+		if(ret != -EALREADY)
+		{
+			LOG_ERR("Failed to initialize: %d\r\n", ret);
+			return ret;
+		}
 	}
 
 	/* Start extended advertising */
@@ -561,14 +579,34 @@ int le_audio_enable(le_audio_receive_cb recv_cb, le_audio_timestamp_cb timestmp_
 		return ret;
 	}
 	LOG_DBG("LE Audio enabled");
-
+	if(first_time == false)
+	{
+		first_time = true;
+		manu_ext_adv_data_t data; 
+		data.refined.comapny_id = 0xABCD;
+		data.refined.request_to_speak = 0;
+		data.refined.device_type = DEVICE_TYPE_GATEWAY_MIXER;
+		memcpy(data.refined.mac, ultilities_get_mac(), 6);
+		non_connectable_adv_create(data);
+	}
 	return 0;
 }
 
 int le_audio_disable(void)
 {
 	int ret;
-
+	ret = bt_le_per_adv_stop(adv);
+	if(ret)
+	{
+		LOG_ERR("Audio PER advertising fail to stop (err %d)\r\n", ret);
+		return ret;
+	}
+	ret = bt_le_ext_adv_stop(adv);
+	if(ret)
+	{
+		LOG_ERR("Audio EXT advertising fail to stop (err %d)\r\n", ret);
+		return ret;
+	}
 	if (audio_streams[0].ep->status.state == BT_BAP_EP_STATE_STREAMING) {
 		/* Deleting broadcast source in stream_stopped_cb() */
 		delete_broadcast_src = true;
@@ -589,4 +627,72 @@ int le_audio_disable(void)
 	LOG_DBG("LE Audio disabled");
 
 	return 0;
+}
+/*Adding an additional LE audio advertising */
+#define NON_CONNECTABLE_DEVICE_NAME "MIC_BLE"
+static struct bt_le_ext_adv *addition_ext_adv;
+static const struct bt_le_adv_param *non_connectable_adv_param =
+	BT_LE_ADV_PARAM(BT_LE_ADV_OPT_USE_NAME,
+			0x140, /* 200 ms */
+			0x190, /* 250 ms */
+			NULL);
+
+// static const struct bt_data non_connectable_data[] = {
+// 	BT_DATA_BYTES(BT_DATA_FLAGS, BT_LE_AD_NO_BREDR),
+// 	BT_DATA_BYTES(BT_DATA_URI, /* The URI of the https://www.nordicsemi.com website */
+// 		      0x17, /* UTF-8 code point for “https:” */
+// 		      '/', '/', 'w', 'w', 'w', '.',
+// 		      'n', 'o', 'r', 'd', 'i', 'c', 's', 'e', 'm', 'i', '.',
+// 		      'c', 'o', 'm')
+// };
+static int advertising_stop();
+static int advertising_set_create(struct bt_le_ext_adv **adv,
+				  const struct bt_le_adv_param *param,
+				  const struct bt_data *ad, size_t ad_len)
+{
+	int err;
+	struct bt_le_ext_adv *adv_set;
+
+	err = bt_le_ext_adv_create(param, NULL,
+				   adv);
+	if (err) {
+		return err;
+	}
+
+	adv_set = *adv;
+
+	printk("Created adv: %p\n", adv_set);
+
+	err = bt_le_ext_adv_set_data(adv_set, ad, ad_len,
+				     NULL, 0);
+	if (err) {
+		printk("Failed to set advertising data (err %d)\n", err);
+		return err;
+	}
+
+	return bt_le_ext_adv_start(adv_set, BT_LE_EXT_ADV_START_DEFAULT);
+}
+static int non_connectable_adv_create(manu_ext_adv_data_t adv_data)
+{
+	int err;
+
+	err = bt_set_name(NON_CONNECTABLE_DEVICE_NAME);
+	if (err) {
+		printk("Failed to set device name (err %d)\n", err);
+		return err;
+	}
+
+	struct bt_data ext_ad[2];
+	manu_ext_adv_data_t data = adv_data;
+	ext_ad[0] = (struct bt_data)BT_DATA_BYTES(BT_DATA_GAP_APPEARANCE, 
+								(BT_APPEARANCE_AUDIO_SOURCE_BROADCASTING_DEVICE >> 0) & 0xff,
+						  		(BT_APPEARANCE_AUDIO_SOURCE_BROADCASTING_DEVICE >> 8) & 0xff);
+	ext_ad[1] = (struct bt_data)BT_DATA(BT_DATA_MANUFACTURER_DATA, data.raw, sizeof(data));
+	err = advertising_set_create(&addition_ext_adv, non_connectable_adv_param,
+				     ext_ad, ARRAY_SIZE(ext_ad));
+	if (err) {
+		printk("Failed to create a non-connectable advertising set (err %d)\n", err);
+	}
+
+	return err;
 }
